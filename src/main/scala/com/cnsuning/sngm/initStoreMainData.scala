@@ -10,8 +10,8 @@ import org.apache.spark.SparkConf
 import org.slf4j.LoggerFactory
 import org.apache.spark.sql.functions.lit
 
-object storeInitMainData {
-  val LOGGER = LoggerFactory.getLogger(storeInitMainData.getClass)
+object initStoreMainData {
+  val LOGGER = LoggerFactory.getLogger(initStoreMainData.getClass)
 
   def clearStoreName(DF:DataFrame,strCol:String,cityCol:String):DataFrame = {
     val data1 = DF.withColumn("zero",lit(""))
