@@ -39,7 +39,7 @@ object initStoreMainData {
       .set("spark.sql.hive.metastorePartitionPruning", "false")
 
     //    define value for program
-    val querySqlStr="select * from bi_sor.tsor_org_plant_td t "
+    val querySqlStr="select plant_cd,plant_nm,cmpy_cd,area_cd,city_cd,city_nm,street_cd,idry_site_tp_cd,sub_plant_tp_cd,plant_tp_cd,plant_stat_cd from bi_sor.tsor_org_plant_td t "
     val querySqlCity = "select admin_city_cd,city_cd from bi_sor.tsor_org_city_conv_rel_td t  "
     val querySqlStrType = "select idry_site_tp_cd,sub_plant_tp_cd,str_type from sospdm.store_type_logic t"
     val session = SparkSession.builder().config(sc).enableHiveSupport().getOrCreate()
