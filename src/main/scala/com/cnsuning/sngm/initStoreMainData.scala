@@ -28,7 +28,8 @@ object initStoreMainData {
     val data3 = data2.withColumn("clrCityName",data2.col(cityCol).substr(data2.col("startPos"),length(data2.col(cityCol))-1))
     val data4 = data3.withColumn("clrCityName",when({{data3.col(cityCol).like("%市") || data3.col(cityCol).like("州")} && length(data3.col(cityCol))>2},data3.col("clrCityName")).otherwise(data3.col(cityCol)))
     data4.withColumn(strCol,regexp_replace(data4.col(strCol),data4.col("clrCityName"),data4.col("zero")))
-      .drop("zero").drop("clrCityName").drop("startPos")
+      .drop("zero").drop("clrCityName")
+      .withColumnRenamed("startPos","data_source")
     //    DF
   }
 
@@ -38,7 +39,7 @@ object initStoreMainData {
       .set("spark.sql.hive.metastorePartitionPruning", "false")
 
     //    define value for program
-    val querySqlStr="select * from sospdm.tsor_org_plant_td t "
+    val querySqlStr="select * from bi_sor.tsor_org_plant_td t "
     val querySqlCity = "select admin_city_cd,city_cd from bi_sor.tsor_org_city_conv_rel_td t  "
     val querySqlStrType = "select idry_site_tp_cd,sub_plant_tp_cd,str_type from sospdm.store_type_logic t"
     val session = SparkSession.builder().config(sc).enableHiveSupport().getOrCreate()
