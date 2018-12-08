@@ -43,6 +43,7 @@ object initStoreMainDataRegion {
     val dfRegion2 = dfRegion1.withColumn("district_nm",regexp_replace(dfRegion1.col("district_nm"),"区|市|县",""))
     // rename for the column
     val dfCmpy1 = dfCmpy.withColumnRenamed("cmpy_nm","org_nm")
+      .withColumnRenamed("open_date","built_date")
 
     //define etl_time
     val now = new Date()
