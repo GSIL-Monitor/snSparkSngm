@@ -23,7 +23,6 @@ object activityManageListWeekly {
       ("3", "南京玄武区中心  广场店", "南京州"),
       tu
     )).toDF("id","storeName","cityName")//(ExpressionEncoder(): Encoder[Seq(String, String,String)])
-
     data.show()
     val data1 = data.withColumn("storeName",regexp_replace(data.col("storeName"),"\t|\n|\r|\\s+|区|市",""))
 //        .withColumn()
