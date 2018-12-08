@@ -4,6 +4,9 @@ package com.cnsuning.sngm
   *
   *
   */
+import java.text.SimpleDateFormat
+import java.util.Date
+
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.{Column, DataFrame, Encoder, SparkSession}
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
@@ -24,7 +27,11 @@ object activityManageListWeekly {
       tu
     )).toDF("id","storeName","cityName")//(ExpressionEncoder(): Encoder[Seq(String, String,String)])
     data.show()
+    val now = new Date()
+    val dateFormat:SimpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+    val date = dateFormat.format(now)
     val data1 = data.withColumn("storeName",regexp_replace(data.col("storeName"),"\t|\n|\r|\\s+|区|市",""))
+        .withColumn("etl_time",lit(date))
 //        .withColumn()
     data1.show()
   }

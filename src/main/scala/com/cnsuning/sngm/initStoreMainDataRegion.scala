@@ -1,14 +1,20 @@
 package com.cnsuning.sngm
 
+import java.text.SimpleDateFormat
+import java.util.Date
+
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
+import org.slf4j.LoggerFactory
+
 import scala.util.matching.Regex
 /**
   *
   *
   */
 object initStoreMainDataRegion {
+  val logger = LoggerFactory.getLogger(initStoreMainDataRegion.getClass)
 
   def main(args: Array[String]): Unit = {
     // init spark configuration
@@ -28,21 +34,29 @@ object initStoreMainDataRegion {
 
     // clean the column str_cd
     val dfStr1 = dfStr.withColumn("str_cd",regexp_replace(dfStr.col("str_cd"),"\t|\n|\r|\\s+",""))
-    // rename for the column
+    //   rename for the column
     val dfRegion1 =
       dfRegion.withColumnRenamed("area_name","district_nm")
         .withColumnRenamed("area_code","region_cd")
         .withColumnRenamed("city_code","city_cd")
         .distinct()
     val dfRegion2 = dfRegion1.withColumn("district_nm",regexp_replace(dfRegion1.col("district_nm"),"区|市|县",""))
-
+    // rename for the column
     val dfCmpy1 = dfCmpy.withColumnRenamed("cmpy_nm","org_nm")
 
+    //define etl_time
+    val now = new Date()
+    val dateFormat:SimpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+    val etl_time = dateFormat.format(now)
+
     // use left join to combine  three tables and get distinct
-    val df = dfStr1.join(dfCmpy,dfStr1("str_cd") === dfCmpy("str_cd"),"left")
+    val df = dfStr1.join(dfCmpy1,Seq("str_cd"),"left")
       .join(dfRegion2,Seq("district_nm","city_cd"),"left")
       .distinct()
+        .withColumn("etl_time",lit(etl_time))
 
+
+//    logger.info("====================================================:{}",df.show())
     // split join result ,using column region_nm whether contains district_nm
 //    val df1 = df.filter(row => row.getAs[String]("region_nm").contains( row.getAs[String]("district_nm")))
 //    val df2 = df.filter(row => !row.getAs[String]("region_nm").contains( row.getAs[String]("district_nm")))
