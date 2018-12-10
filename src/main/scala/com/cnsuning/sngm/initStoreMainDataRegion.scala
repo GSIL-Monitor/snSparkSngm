@@ -63,7 +63,7 @@ object initStoreMainDataRegion {
 //    val df2 = df.filter(row => !row.getAs[String]("region_nm").contains( row.getAs[String]("district_nm")))
 
     // store date overwrite in to hive data warehouse，cover destination table DDl struct
-    df.write.mode("overwrite").saveAsTable("sospdm.t_sngm_init_str_detail")
+    df.write.mode("append").saveAsTable("sospdm.t_sngm_init_str_detail")
 
 //    session.sql("insert overwrite table sosp_ssa.tssa_sosp_t_store_detail " +
 //      "select str_cd,str_nm,city_cd,city_nm,addr,longitude,latitude,org_cd,org_nm,area_cd,area_nm,etl_time,district_nm,region_cd,str_type,built_date" +
