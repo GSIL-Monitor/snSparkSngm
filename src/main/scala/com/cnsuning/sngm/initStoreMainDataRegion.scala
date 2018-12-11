@@ -56,7 +56,6 @@ object initStoreMainDataRegion {
       .distinct()
         .withColumn("etl_time",lit(etl_time))
 
-
 //    logger.info("====================================================:{}",df.show())
     // split join result ,using column region_nm whether contains district_nm
 //    val df1 = df.filter(row => row.getAs[String]("region_nm").contains( row.getAs[String]("district_nm")))
