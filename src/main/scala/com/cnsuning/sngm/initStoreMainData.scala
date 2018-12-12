@@ -52,7 +52,7 @@ object initStoreMainData {
       .drop("plant_tp_cd").drop("plant_stat_cd")
       .filter(row => {val plt_nm = row.getAs[String]("plant_nm")
         val st_cd = row.getAs[String]("street_cd")
-        plt_nm != "待定" && plt_nm != "待用" && st_cd != "待定" && st_cd != "待用"
+        plt_nm != "待定" && plt_nm != "待用" && st_cd != "待定" && st_cd != "待用" && !plt_nm.contains("测试")
       })
 
     //  change store name to be a real store name when it contain its' city name within a UDF Function
