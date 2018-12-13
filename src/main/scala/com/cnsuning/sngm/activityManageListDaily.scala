@@ -29,7 +29,13 @@ object activityManageListDaily {
 //    define activity data source
     val querySqlActBaseInfo = "select " + "start_date_outside,start_date_burst,end_date_burst," +
       "activity_id,activity_nm,activity_type,str_type,area_cd,start_date_comparison,end_date_comparison" +
-      " from sospdm.t_sngm_activity_base_info a where a.act_state ='0' "
+      " from sospdm.t_sngm_activity_base_info t where a.act_state ='0' "
+//    define city detail data source
+    val querySqlCity = "select city_cd,city_nm,area_cd from sospdm.t_city_detail t"
+//    define activity join info source
+    val querySqlActJoin = "select str_cd,res_cd,activity_id,city_cd from sospdm.t_sngm_activity_join_info t"
+//    define activity base information ref data source
+    val querySqlActRef = "select activity_id,marketing_type,marketing_cd from sospdm.t_sngm_activity_base_info_ref t"
 
 //    1.define activity base info data frame ,and get maximum&minimum burst date and even maximum&minimum comparison date
     val dfAct = spark.sql(querySqlActBaseInfo)
@@ -57,7 +63,6 @@ object activityManageListDaily {
 //    2. define the order data source range from minDate to maxDate
     val querySqlOrderWidth = "select * from sospdm.sngm_t_order_width_07_d a " +
       "where statis_date >='" + minDateCondition + "' and statis_date <='" + maxDateCondition + "'"
-
 
 //    val sq:Seq[Int] = row.toSeq
 
