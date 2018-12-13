@@ -26,7 +26,7 @@ object initStoreMainData {
        ,col(cityCol).substr(data2.col("startPos"),length(data2.col(cityCol))-1).as("clrCityName")
      )*/
     val data3 = data2.withColumn("clrCityName",data2.col(cityCol).substr(data2.col("startPos"),length(data2.col(cityCol))-1))
-    val data4 = data3.withColumn("clrCityName",when({{data3.col(cityCol).like("%市") || data3.col(cityCol).like("州")} && length(data3.col(cityCol))>2},data3.col("clrCityName")).otherwise(data3.col(cityCol)))
+    val data4 = data3.withColumn("clrCityName",when({{data3.col(cityCol).like("%市") || data3.col(cityCol).like("%州")} && length(data3.col(cityCol))>2},data3.col("clrCityName")).otherwise(data3.col(cityCol)))
     data4.withColumn(strCol,regexp_replace(data4.col(strCol),data4.col("clrCityName"),data4.col("zero")))
       .drop("zero").drop("clrCityName")
       .withColumnRenamed("startPos","data_source")

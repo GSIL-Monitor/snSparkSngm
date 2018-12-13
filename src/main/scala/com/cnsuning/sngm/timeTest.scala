@@ -1,5 +1,8 @@
 package com.cnsuning.sngm
 
+import java.text.SimpleDateFormat
+import java.util.Date
+
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.functions._
@@ -29,5 +32,13 @@ object timeTest {
     val maxDate:Seq[Any] = data2.select("statis_date1").groupBy().max().head.toSeq
     val a = maxDate
     println(maxDate)
+
+    val now = new Date()
+    val date1 = "20181213"
+    val date2 = new SimpleDateFormat("yyyyMMdd")
+    val executeDate = date2.parse(date1).getTime/1000
+    val data3 = data2.withColumn("state",when(data2.col("statis_date1") > executeDate,1).when(data2.col("statis_date1") < executeDate,2).otherwise(0))
+    println(date2.format(now))
+    data3.show()
   }
 }
