@@ -1,10 +1,15 @@
 package com.cnsuning.sngm
 
-import org.apache.spark.{SparkConf, SparkContext}
-import org.apache.spark.sql.SparkSession
+import java.text.SimpleDateFormat
+
+import org.apache.spark.SparkConf
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.{Row, SparkSession}
+import org.apache.spark.storage.StorageLevel
 import org.slf4j.LoggerFactory
 
-/**Program used to deal with Activity Management List module(AML), on daily frequency
+/**
+  * Program used to deal with Activity Management List module(AML), on daily frequency
   *
   *
   */
@@ -12,20 +17,52 @@ import org.slf4j.LoggerFactory
 
 object activityManageListDaily {
   def main(args: Array[String]): Unit = {
-    /*接收并处理时间参数*/
-    val statis_date = args(0)
+//  accept date parameter
+//    val statis_date = args(0)
 //    val  = args(1)
+//    define log out object
     val logger = LoggerFactory.getLogger(activityManageListDaily.getClass)
+//    define spark session
+    val sc = new SparkConf().setAppName("actMngLstDlyExector")//.setMaster("local")
+        .set("spark.sql.hive.metastorePartitionPruning", "false")
+    val spark = SparkSession.builder().config(sc).enableHiveSupport().getOrCreate()
+//    define activity data source
+    val querySqlActBaseInfo = "select " + "start_date_outside,start_date_burst,end_date_burst," +
+      "activity_id,activity_nm,activity_type,str_type,area_cd,start_date_comparison,end_date_comparison" +
+      " from sospdm.t_sngm_activity_base_info a where a.act_state ='0' "
 
-    val sc = new SparkConf().setAppName("actMngLstDlyExector").setMaster("local")
-//    val sparkSession = SparkSession.builder().config(sc).enableHiveSupport().getOrCreate()
-    val sparkContext = new SparkContext(sc)
-    val rdd = sparkContext.parallelize(args.toSeq)
-    logger.info("==============Args_output===============" + ":{}",rdd.collect())
-//    logger.info("==============argsLength===============" + ":{}",args.length)
-//    logger.info("==============argsforeach===============" + ":{}",v1)
-    logger.info("==============${statisdate}===============" + ":{}",args.foreach(x => x))
+//    1.define activity base info data frame ,and get maximum&minimum burst date and even maximum&minimum comparison date
+    val dfAct = spark.sql(querySqlActBaseInfo)
+    val dfAct1 =
+      dfAct.withColumn("start_date_outside",unix_timestamp(dfAct.col("start_date_outside"),"yyyyMMdd"))
+        .withColumn("start_date_burst",unix_timestamp(dfAct.col("start_date_burst"),"yyyyMMdd"))
+        .withColumn("end_date_burst",unix_timestamp(dfAct.col("end_date_burst"),"yyyyMMdd"))
+        .withColumn("start_date_comparison",unix_timestamp(dfAct.col("start_date_comparison"),"yyyyMMdd"))
+        .withColumn("end_date_comparison",unix_timestamp(dfAct.col("end_date_comparison"),"yyyyMMdd"))
+    dfAct1.persist(StorageLevel.MEMORY_ONLY_2) //cache data in memory for second use
 
+//    val dateArr = Array(dfAct1.col("start_date_burst"))
+    val dfTime = dfAct1.select(col("start_date_burst"),col("end_date_burst"),col("start_date_comparison"),col("end_date_comparison"))
+    val seqMax:Seq[Any] = dfTime.groupBy().max().head.toSeq
+    val seqMin:Seq[Any] = dfTime.groupBy().min().head.toSeq
+    var maxDate:Long = if (seqMax.head.isInstanceOf[Long]) seqMax.head.asInstanceOf[Long] else 0
+    var minDate:Long = if (seqMin.head.isInstanceOf[Long]) seqMin.head.asInstanceOf[Long] else 2144231661 //时间戳最大值
+    for(i <- seqMax) if(i.isInstanceOf[Long]) maxDate = if(maxDate < i.asInstanceOf[Long]) i.asInstanceOf[Long] else maxDate
+    for(i <- seqMin) if(i.isInstanceOf[Long]) minDate = if(minDate > i.asInstanceOf[Long]) i.asInstanceOf[Long] else minDate
+    val dataFormat:SimpleDateFormat = new SimpleDateFormat("yyyyMMdd")
+    val maxDateCondition = dataFormat.format(maxDate * 1000) // spark unix time stamp only to seconds ,different with scala
+    val minDateCondition = dataFormat.format(minDate * 1000)
+
+
+//    2. define the order data source range from minDate to maxDate
+    val querySqlOrderWidth = "select * from sospdm.sngm_t_order_width_07_d a " +
+      "where statis_date >='" + minDateCondition + "' and statis_date <='" + maxDateCondition + "'"
+
+
+//    val sq:Seq[Int] = row.toSeq
+
+    logger.info("==============${statisdate}===============" + ":{}",querySqlOrderWidth)
+    spark.stop()
 //    args.foreach(x => logger.info(x))
 
   }
