@@ -51,31 +51,35 @@ object activityManageListDaily {
 //    1.define activity base info data frame ,and get maximum&minimum burst date and even maximum&minimum comparison data
 
     val dfAct = spark.sql(querySqlActBaseInfo)
-    val dfAct1 =
+
+      val dfAct1 =
       dfAct.withColumn("start_date_outside",unix_timestamp(dfAct.col("start_date_outside"),"yyyyMMdd"))
         .withColumn("start_date_burst",unix_timestamp(dfAct.col("start_date_burst"),"yyyyMMdd"))
         .withColumn("end_date_burst",unix_timestamp(dfAct.col("end_date_burst"),"yyyyMMdd"))
         .withColumn("start_date_comparison",unix_timestamp(dfAct.col("start_date_comparison"),"yyyyMMdd"))
         .withColumn("end_date_comparison",unix_timestamp(dfAct.col("end_date_comparison"),"yyyyMMdd"))
-    dfAct1.persist(StorageLevel.MEMORY_ONLY_2) //cache data in memory for second use
+      dfAct1.persist(StorageLevel.MEMORY_ONLY_2) //cache data in memory for second use
 
 //    2. define the order data source range from minDate to maxDate
-    val dfTime = dfAct1.select(col("start_date_burst"),col("end_date_burst"),col("start_date_comparison"),col("end_date_comparison"))
-    val seqMax:Seq[Any] = dfTime.groupBy().max().head.toSeq
-    val seqMin:Seq[Any] = dfTime.groupBy().min().head.toSeq
-    var maxDate:Long = if (seqMax.head.isInstanceOf[Long]) seqMax.head.asInstanceOf[Long] else 0
-    var minDate:Long = if (seqMin.head.isInstanceOf[Long]) seqMin.head.asInstanceOf[Long] else 2144231661 //时间戳最大值 1544630400 -> 20181213
-    for(i <- seqMax) if(i.isInstanceOf[Long]) maxDate = if(maxDate < i.asInstanceOf[Long]) i.asInstanceOf[Long] else maxDate
-    for(i <- seqMin) if(i.isInstanceOf[Long]) minDate = if(minDate > i.asInstanceOf[Long]) i.asInstanceOf[Long] else minDate
-    val maxDateCondition = dataFormat.format(maxDate * 1000) // spark unix time stamp only to seconds ,different with scala
-    val minDateCondition = dataFormat.format(minDate * 1000)
-    val querySqlOrderWidth = "select * from sospdm.sngm_t_order_width_07_d a " +
+
+      val dfTime = dfAct1.select(col("start_date_burst"),col("end_date_burst"),col("start_date_comparison"),col("end_date_comparison"))
+      val seqMax:Seq[Any] = dfTime.groupBy().max().head.toSeq
+      val seqMin:Seq[Any] = dfTime.groupBy().min().head.toSeq
+      var maxDate:Long = if (seqMax.head.isInstanceOf[Long]) seqMax.head.asInstanceOf[Long] else 0
+      var minDate:Long = if (seqMin.head.isInstanceOf[Long]) seqMin.head.asInstanceOf[Long] else 2144231661 //时间戳最大值 1544630400 -> 20181213
+      for(i <- seqMax) if(i.isInstanceOf[Long]) maxDate = if(maxDate < i.asInstanceOf[Long]) i.asInstanceOf[Long] else maxDate
+      for(i <- seqMin) if(i.isInstanceOf[Long]) minDate = if(minDate > i.asInstanceOf[Long]) i.asInstanceOf[Long] else minDate
+      val maxDateCondition = dataFormat.format(maxDate * 1000) // spark unix time stamp only to seconds ,different with scala
+      val minDateCondition = dataFormat.format(minDate * 1000)
+      val querySqlOrderWidth = "select * from sospdm.sngm_t_order_width_07_d a " +
       "where statis_date >='" + minDateCondition + "' and statis_date <='" + maxDateCondition + "'"
 
 
 //    3. get every activity detail information
-    val executeDateStamp:Long = dataFormat.parse(executeDate).getTime / 1000 + 86400 // cast running date to a stamp Long type and plus one day for compare with the activity date
-    val dfActDtl = dfAct1.withColumn("activity_state",
+
+      val executeDateStamp:Long = dataFormat.parse(executeDate).getTime / 1000 + 86400 // cast running date to a stamp Long type and plus one day for compare with the activity date
+
+      val dfActDtl = dfAct1.withColumn("activity_state",
         when(dfAct1.col("start_date_outside") > executeDateStamp,"1")
           .when(dfAct1.col("start_date_outside") < executeDateStamp && dfAct1("start_date_burst") > executeDateStamp,"2")
           .when(dfAct1.col("start_date_burst") <= executeDateStamp && dfAct1("end_date_burst") >= executeDateStamp,"3")
@@ -87,11 +91,22 @@ object activityManageListDaily {
         .withColumn("statis_date_w",from_unixtime(dfAct1.col("start_date_burst") - (((dfAct1.col("start_date_burst") - 1522512000) / 86400) % 7 - 7) * 86400,"yyyyMMdd")) //得到当周最后一天（周日）
         .withColumn("statis_date_m",from_unixtime(dfAct1.col("start_date_burst"),"yyyyMM"))
 
-//    dfAct1.unpersist()
-      dfActDtl.write.mode("overwrite").saveAsTable("sospdm.t_sngm_act1_test")
+      val dfCt = spark.sql(querySqlCity)
+      val dfActJoin = spark.sql(querySqlActJoin)
+      val dfActRef = spark.sql(querySqlActRef)
+
+      val dfActDtl1 =
+          dfActDtl.join(dfActRef,"activity_id")
+              .join(dfCt,Seq("area_cd"),"left")
+              .join(dfActJoin,Seq("activity_id","city_cd"),"left")
+
+
+      //    dfAct1.unpersist()
+      dfActDtl1.write.mode("overwrite").saveAsTable("sospdm.t_sngm_act1_test")
 
 
 //    logger.info("==============${statisdate}===============" + ":{}",querySqlOrderWidth)
+
 //    close spark session
     spark.stop()
   }
