@@ -84,7 +84,7 @@ object activityManageListDaily {
         .withColumn("end_date_comparison",when(dfAct1.col("start_date_burst") <= executeDateStamp && dfAct1.col("end_date_burst") >= executeDateStamp,dfAct1.col("start_date_comparison") - dfAct1.col("start_date_burst") + executeDateStamp)
             .otherwise(dfAct1.col("end_date_comparison") + 86400))
         .withColumn("statis_date_d",from_unixtime(dfAct1.col("start_date_burst"),"yyyyMMdd"))
-        .withColumn("statis_date_w",((dfAct1.col("start_date_burst")-1522512000) / 86400) % 7)
+        .withColumn("statis_date_w",from_unixtime(dfAct1.col("start_date_burst") - (((dfAct1.col("start_date_burst") - 1522512000) / 86400) % 7 - 7) * 86400,"yyyyMMdd")) //得到当周最后一天（周日）
         .withColumn("statis_date_m",from_unixtime(dfAct1.col("start_date_burst"),"yyyyMM"))
 
 //    dfAct1.unpersist()
