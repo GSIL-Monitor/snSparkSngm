@@ -33,7 +33,8 @@ object activityManageListDaily {
 //    define activity data source
     val querySqlActBaseInfo = "select " + "start_date_outside,start_date_burst,end_date_burst," +
       "activity_id,activity_nm,'2' activity_type,'3' str_type,area_cd,start_date_comparison,end_date_comparison" +
-      " from sospdm.t_sngm_activity_base_info t where a.act_state ='0' "
+      " from sospdm.t_sngm_activity_base_info t "
+//      "where a.act_state ='0' "
 
 //    define city detail data source
     val querySqlCity = "select city_cd,city_nm,area_cd from sospdm.t_city_detail t"
@@ -82,11 +83,15 @@ object activityManageListDaily {
           .otherwise("99"))
         .withColumn("end_date_comparison",when(dfAct1.col("start_date_burst") <= executeDateStamp && dfAct1.col("end_date_burst") >= executeDateStamp,dfAct1.col("start_date_comparison") - dfAct1.col("start_date_burst") + executeDateStamp)
             .otherwise(dfAct1.col("end_date_comparison") + 86400))
+        .withColumn("statis_date_d",from_unixtime(dfAct1.col("start_date_burst"),"yyyyMMdd"))
+        .withColumn("statis_date_w",((dfAct1.col("start_date_burst")-1522512000) / 86400) % 7)
+        .withColumn("statis_date_m",from_unixtime(dfAct1.col("start_date_burst"),"yyyyMM"))
+
 //    dfAct1.unpersist()
-     dfAct1.write.mode("overwrite").saveAsTable("sospdm.t_sngm_act1_test")
+      dfActDtl.write.mode("overwrite").saveAsTable("sospdm.t_sngm_act1_test")
 
 
-    logger.info("==============${statisdate}===============" + ":{}",querySqlOrderWidth)
+//    logger.info("==============${statisdate}===============" + ":{}",querySqlOrderWidth)
 //    close spark session
     spark.stop()
   }

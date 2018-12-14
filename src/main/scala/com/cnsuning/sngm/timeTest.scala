@@ -34,11 +34,14 @@ object timeTest {
     println(maxDate)
 
     val now = new Date()
-    val date1 = "20181213"
+    val date1 = "20180401"
     val date2 = new SimpleDateFormat("yyyyMMdd")
     val executeDate = date2.parse(date1).getTime/1000
     val data3 = data2.withColumn("state",when(data2.col("statis_date1") > executeDate,1).when(data2.col("statis_date1") < executeDate,2).otherwise(0))
     println(date2.format(now))
+
+
+    println(executeDate)
     data3.show()
   }
 }
