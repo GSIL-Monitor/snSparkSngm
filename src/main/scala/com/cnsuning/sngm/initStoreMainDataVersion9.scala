@@ -49,11 +49,14 @@ object initStoreMainDataVersion9 {
       .drop("str_status").drop("site_tp_cd").drop("vrtl_flg")
       .filter(row => {val str_nm = row.getAs[String]("str_nm")
         val str_addr = row.getAs[String]("str_addr")
-        str_nm != "待定" && str_nm != "待用" && str_addr != "待定" && str_addr != "待用" && !str_nm.contains("测试")
+        str_nm != "待定" && str_nm != "待用" && str_addr != "待定" && str_addr != "待用" &&
+          !str_nm.contains("测试") && !str_nm.contains("验证") &&
+          !str_nm.contains("续签") && !str_nm.contains("费用") &&
+          !str_nm.contains("虚拟")
       })
       .filter(!col("city_cd").like("HK%"))
 //      .filter(!col("str_addr")==="-")
-      .filter(!col("str_nm").like("%虚拟%"))
+//      .filter(!col("str_nm").like("%虚拟%"))
       .withColumnRenamed("cmpy_cd","org_cd")
       .withColumnRenamed("str_addr","addr")
       .withColumnRenamed("str_busi_fmt_cd","idry_site_tp_cd")

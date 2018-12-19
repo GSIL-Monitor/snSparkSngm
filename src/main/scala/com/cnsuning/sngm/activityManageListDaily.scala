@@ -33,7 +33,7 @@ object activityManageListDaily {
 //    define activity data source
     val querySqlActBaseInfo = "select " + "start_date_outside,start_date_burst,end_date_burst," +
       "activity_id,activity_nm,'2' activity_type,'3' str_type,area_cd,start_date_comparison,end_date_comparison" +
-      " from sospdm.t_sngm_activity_base_info t "
+      " from sospdm.t_sngm_activity_base_info t where activity_id='201809262333493545'"
 //      "where a.act_state ='0' "
 
 //    define city detail data source
@@ -100,11 +100,13 @@ object activityManageListDaily {
               .join(dfCt,Seq("area_cd"),"left")
               .join(dfActJoin,Seq("activity_id","city_cd"),"left")
 
+      import spark.implicits
+//      val dfAcDtl2 = dfActDtl1.flatMap(row => )
 
-      //    dfAct1.unpersist()
+
       dfActDtl1.write.mode("overwrite").saveAsTable("sospdm.t_sngm_act1_test")
 
-
+      dfAct1.unpersist()
 //    logger.info("==============${statisdate}===============" + ":{}",querySqlOrderWidth)
 
 //    close spark session
