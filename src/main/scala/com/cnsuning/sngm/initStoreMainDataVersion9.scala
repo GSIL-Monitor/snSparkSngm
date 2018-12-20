@@ -40,6 +40,7 @@ object initStoreMainDataVersion9 {
     val querySqlStr="select str_cd,str_nm,cmpy_cd,cmpy_nm,area_cd,city_cd,city_nm,str_addr,str_busi_fmt_cd,str_status,site_tp_cd,vrtl_flg,str_prop_cd from brock_dim.t_spl_str_tree_ed a"
 //    val querySqlCity = "select admin_city_cd,city_cd from bi_sor.tsor_org_city_conv_rel_td t  "
     val querySqlStrType = "select idry_site_tp_cd,sub_plant_tp_cd,str_type from sospdm.store_type_logic t"
+    val querySqlStrPos = "select bd_longitude,bd_latitude,store_code from pos_sor.tsor_nsfbus_md_store_operate_all"
     val session = SparkSession.builder().config(sc).enableHiveSupport().getOrCreate()
 
     //    get store information with admin city_cd
@@ -61,8 +62,8 @@ object initStoreMainDataVersion9 {
       .withColumnRenamed("str_addr","addr")
       .withColumnRenamed("str_busi_fmt_cd","idry_site_tp_cd")
       .withColumnRenamed("str_prop_cd","sub_plant_tp_cd")
-      .withColumn("longitude",lit(0))
-      .withColumn("latitude",lit(0))
+//      .withColumn("longitude",lit(0))
+//      .withColumn("latitude",lit(0))
       .withColumn("district_nm",lit(""))
 
     //  change store name to be a real store name when it contain its' city name within a UDF Function
@@ -76,6 +77,12 @@ object initStoreMainDataVersion9 {
 
     //    get store type information to be joined
     val strType = session.sql(querySqlStrType).distinct()
+
+    //    get hive level store location position from main data
+    val strPos = session.sql(querySqlStrPos).distinct()
+      .withColumnRenamed("bd_longitude","longitude")
+      .withColumnRenamed("bd_latitude","latitude")
+      .withColumnRenamed("store_code","str_cd")
 
     //    inner join the store information to replace a admin_city_cd became a city_cd: 1000017 -> 025
 //    val DF = strDF
@@ -93,6 +100,7 @@ object initStoreMainDataVersion9 {
 
     val rsltDF = strDF.join(strType,Seq("idry_site_tp_cd","sub_plant_tp_cd"),"inner")
       .drop("idry_site_tp_cd").drop("sub_plant_tp_cd")
+        .join(strPos,Seq("str_cd"),"left")
 
     rsltDF.write.mode("overwrite").saveAsTable("sospdm.t_sngm_init_str_original") // 此句会Drop原先的表，然后按照DF的内容自己建立一个。
 

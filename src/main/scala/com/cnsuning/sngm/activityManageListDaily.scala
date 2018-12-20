@@ -101,7 +101,7 @@ object activityManageListDaily {
               .join(dfActJoin,Seq("activity_id","city_cd"),"left")
 
       import spark.implicits._
-      val dsAcDtl = dfActDtl1.as[(String,String,String,Long,Long,Long,String,String,String,Long,Long,Long,String,String,String,String,String,String,String,String,String)]
+      val dsAcDtl = dfActDtl1.as[(String,String,String,Int,Int,Int,String,String,String,Int,Int,String,String,String,String,String,String,String,String,String)]
 
 
       dfActDtl1.write.mode("overwrite").saveAsTable("sospdm.t_sngm_act1_test")
