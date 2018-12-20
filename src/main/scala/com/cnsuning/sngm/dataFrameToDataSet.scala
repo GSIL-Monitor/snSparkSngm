@@ -30,13 +30,22 @@ object dataFrameToDataSet {
     val dataSet2 = dataFrame.as[(Int,String,String)]
     println("==================" + dataSet2.getClass)
     dataSet2.show()
-//
-//    val dataSet3 = dataSet2.flatMap{
-//      case (id,statis_date,city_nm) => city_nm.split(" ").map((id,statis_date,_))
-//    }.toDF("statis_date","id","city_nm").as[Info]
-//    println("--------------00000000000000----------")
-//    dataSet3.show()
+
+    val dataSet3 = dataSet2.flatMap{
+      case (id,statis_date,city_nm) => city_nm.split(" ").map((id,statis_date,_))
+    }.toDF("id","statis_date","city_nm").as[Info]
+    println("--------------00000000000000----------")
+    dataSet3.show()
 //    val data = dataSet.flatMap()
 //    data.show()
+
+    val s = for(i <- 1 to 10 by 2 )
+      yield i.toString
+
+    val ss = s.map(("aaa",_))
+    println(s.getClass)
+    println(s)
+    println(ss.getClass)
+    println(ss)
   }
 }

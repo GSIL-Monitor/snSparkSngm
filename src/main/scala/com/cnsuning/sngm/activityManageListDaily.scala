@@ -33,7 +33,7 @@ object activityManageListDaily {
 //    define activity data source
     val querySqlActBaseInfo = "select " + "start_date_outside,start_date_burst,end_date_burst," +
       "activity_id,activity_nm,'2' activity_type,'3' str_type,area_cd,start_date_comparison,end_date_comparison" +
-      " from sospdm.t_sngm_activity_base_info t where activity_id='201809262333493545'"
+      " from sospdm.t_sngm_activity_base_info t where activity_id='201810131714552983'"
 //      "where a.act_state ='0' "
 
 //    define city detail data source
@@ -101,11 +101,63 @@ object activityManageListDaily {
               .join(dfActJoin,Seq("activity_id","city_cd"),"left")
 
       import spark.implicits._
-      val dsAcDtl = dfActDtl1.as[(String,String,String,Int,Int,Int,String,String,String,Int,Int,String,String,String,String,String,String,String,String,String)]
+      val dsActDtl = dfActDtl1.as[(String,String,String,
+        Long,Long,Long,
+        String,String,String,
+        Long,Long,
+        String,String,String,String,
+        Int,
+        String,String,String,String)]
+
+      val dfActDtl2 = dsActDtl.flatMap{
+        case (activity_id,city_cd,area_cd,
+        start_date_outside,start_date_burst,end_date_burst,
+        activity_nm,activity_type,str_type,
+        start_date_comparison,end_date_comparison,
+        activity_state,statis_date_d,statis_date_w,statis_date_m,
+        marketing_type,
+        marketing_cd,city_nm,str_cd,res_cd) => {for(statis_date <- start_date_burst to end_date_burst by 86400) yield dataFormat.format(statis_date * 1000)}.map((
+          activity_id,city_cd,area_cd,
+          start_date_outside,_,
+          activity_nm,activity_type,str_type,
+          activity_state,statis_date_d,statis_date_w,statis_date_m,
+          marketing_type,
+          marketing_cd,city_nm,str_cd,res_cd,"burst"
+        ))
+      }.toDF("activity_id","city_cd","area_cd",
+        "start_date_outside","statis_date",
+        "activity_nm","activity_type","str_type",
+        "activity_state","statis_date_d","statis_date_w","statis_date_m",
+        "marketing_type",
+        "marketing_cd","city_nm","str_cd","res_cd","periodtype")
+
+    val dfActDtl3 = dsActDtl.flatMap{
+      case (activity_id,city_cd,area_cd,
+      start_date_outside,start_date_burst,end_date_burst,
+      activity_nm,activity_type,str_type,
+      start_date_comparison,end_date_comparison,
+      activity_state,statis_date_d,statis_date_w,statis_date_m,
+      marketing_type,
+      marketing_cd,city_nm,str_cd,res_cd) => {for(statis_date <- start_date_comparison to end_date_comparison by 86400) yield dataFormat.format(statis_date * 1000)}.map((
+        activity_id,city_cd,area_cd,
+        start_date_outside,_,
+        activity_nm,activity_type,str_type,
+        activity_state,statis_date_d,statis_date_w,statis_date_m,
+        marketing_type,
+        marketing_cd,city_nm,str_cd,res_cd,"comparison"
+      ))
+    }.toDF("activity_id","city_cd","area_cd",
+      "start_date_outside","statis_date",
+      "activity_nm","activity_type","str_type",
+      "activity_state","statis_date_d","statis_date_w","statis_date_m",
+      "marketing_type",
+      "marketing_cd","city_nm","str_cd","res_cd","periodtype")
+
+    val dfActDtl4 = dfActDtl2.union(dfActDtl3)
 
 
       dfActDtl1.write.mode("overwrite").saveAsTable("sospdm.t_sngm_act1_test")
-      dsAcDtl.write.mode("overwrite").saveAsTable("sospdm.t_sngm_act1_test1")
+      dfActDtl4.write.mode("overwrite").saveAsTable("sospdm.t_sngm_act1_test1")
 
       dfAct1.unpersist()
 //    logger.info("==============${statisdate}===============" + ":{}",querySqlOrderWidth)
