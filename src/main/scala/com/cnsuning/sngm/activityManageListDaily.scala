@@ -158,19 +158,20 @@ object activityManageListDaily {
     val dfActDtlDept = dfActDtl4.filter(col("marketing_type") === "1").withColumnRenamed("marketing_cd","dept_cd")
     val dfActDtlBrand = dfActDtl4.filter(col("marketing_type") === "2").withColumnRenamed("marketing_cd","brand_cd")
     val dfOrdWidth = spark.sql(querySqlOrderWidth)
-    val dfActSaleDtl = dfActDtlDept.join(dfOrdWidth,Seq("statis_date","dept_cd","res_cd"))
-      .withColumn("chnl_cd",when(col("chnl_cd").contains("10|20|30|40"),"2").otherwise("1"))
+    val dfActSaleDtl = dfActDtlDept.join(dfOrdWidth,Seq("statis_date","dept_cd","res_cd","str_cd"))
+      .withColumn("chnl_cd",when(col("chnl_cd").cast("Int") < 50 ,"2").otherwise("1"))
       .withColumnRenamed("dept_cd","goods_cd")
 
 
 
     dfActDtlDept.write.mode("overwrite").saveAsTable("sospdm.t_sngm_act1_test")
+    dfOrdWidth.write.mode("overwrite").saveAsTable("sospdm.t_sngm_act1_test0")
     dfActSaleDtl.write.mode("overwrite").saveAsTable("sospdm.t_sngm_act1_test1")
 
       dfAct1.unpersist()
 //    logger.info("==============${statisdate}===============" + ":{}",querySqlOrderWidth)
 
-//    close spark session
+//    close spark session  select a.* from sospdm.t_sngm_act1_test1 a where city_cd='635' and goods_cd='00001'and str_cd='9671'
     spark.stop()
   }
 }
