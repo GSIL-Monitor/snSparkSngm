@@ -33,7 +33,7 @@ object activityManageListDaily {
 //    define activity data source
     val querySqlActBaseInfo = "select " + "start_date_outside,start_date_burst,end_date_burst," +
       "activity_id,activity_nm,'2' activity_type,'3' str_type,area_cd,start_date_comparison,end_date_comparison" +
-      " from sospdm.t_sngm_activity_base_info t where activity_id='201810131714552983'"
+      " from sospdm.t_sngm_activity_base_info t where activity_id='201810131658074042'"
 //      "where a.act_state ='0' "
 
 //    define city detail data source
@@ -71,7 +71,7 @@ object activityManageListDaily {
       for(i <- seqMin) if(i.isInstanceOf[Long]) minDate = if(minDate > i.asInstanceOf[Long]) i.asInstanceOf[Long] else minDate
       val maxDateCondition = dataFormat.format(maxDate * 1000) // spark unix time stamp only to seconds ,different with scala
       val minDateCondition = dataFormat.format(minDate * 1000)
-      val querySqlOrderWidth = "select * from sospdm.sngm_t_order_width_07_d a " +
+      val querySqlOrderWidth = "select statis_date,chnl_cd,dept_cd,brand_cd,city_code,str_cd,res_cd,member_id,pay_amnt from sospdm.sngm_t_order_width_07_d a " +
       "where statis_date >='" + minDateCondition + "' and statis_date <='" + maxDateCondition + "'"
 
 
@@ -155,9 +155,17 @@ object activityManageListDaily {
 
     val dfActDtl4 = dfActDtl2.union(dfActDtl3)
 
+    val dfActDtlDept = dfActDtl4.filter(col("marketing_type") === "1").withColumnRenamed("marketing_cd","dept_cd")
+    val dfActDtlBrand = dfActDtl4.filter(col("marketing_type") === "2").withColumnRenamed("marketing_cd","brand_cd")
+    val dfOrdWidth = spark.sql(querySqlOrderWidth)
+    val dfActSaleDtl = dfActDtlDept.join(dfOrdWidth,Seq("statis_date","dept_cd","res_cd"))
+      .withColumn("chnl_cd",when(col("chnl_cd").contains("10|20|30|40"),"2").otherwise("1"))
+      .withColumnRenamed("dept_cd","goods_cd")
 
-      dfActDtl1.write.mode("overwrite").saveAsTable("sospdm.t_sngm_act1_test")
-      dfActDtl4.write.mode("overwrite").saveAsTable("sospdm.t_sngm_act1_test1")
+
+
+    dfActDtlDept.write.mode("overwrite").saveAsTable("sospdm.t_sngm_act1_test")
+    dfActSaleDtl.write.mode("overwrite").saveAsTable("sospdm.t_sngm_act1_test1")
 
       dfAct1.unpersist()
 //    logger.info("==============${statisdate}===============" + ":{}",querySqlOrderWidth)
