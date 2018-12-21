@@ -5,6 +5,7 @@ import org.apache.spark.sql.Dataset
 
 class Grouping[T](ds:Dataset[T]) {
   private[this] var dataSet:Dataset[T] = ds
+  println("Grouping Class construct success")
 
   def set(str:String) ={
     println(str)
