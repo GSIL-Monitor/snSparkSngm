@@ -15,6 +15,7 @@ object dataFrameToDataSet {
 
     val sparkConf = new SparkConf().setAppName("dfToDs").setMaster("local")
     val spark = SparkSession.builder().config(sparkConf).getOrCreate()
+    spark.sparkContext.setLogLevel("WARN")
 
     val dataFrame:DataFrame = spark.createDataFrame(Seq(
       (1, "20181213", "杭 州 市"),
@@ -49,15 +50,16 @@ object dataFrameToDataSet {
 //    println(ss.getClass)
 //    println(ss)
 
-    println("=====================汇聚==============")
+    println("=====================汇聚=====================")
     val dataSet4 = dataSet3.groupBy("city_nm").sum("id").as("sum_id")
     dataSet4.show()
     val dataSet5 = dataSet3.groupBy("city_nm").agg(count("statis_date").as("date_cnt"),sum("id").as("id_sum"))
     dataSet5.show()
 
-//    val dataFrame1 = dataSet3
 
-//    val gg1 = Grouping(dataFrame).set("gggg")
+    println("===================== test of grouping sets =====================")
+    dataSet3.show()
+    val gg1 = Grouping(dataSet3).set("aaasss").show()
 //    gg1.show()
 
   }

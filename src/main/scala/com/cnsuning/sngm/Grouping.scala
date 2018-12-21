@@ -6,17 +6,15 @@ import org.apache.spark.sql.Dataset
 class Grouping[T](ds:Dataset[T]) {
   private[this] var dataSet:Dataset[T] = ds
 
-//  def set(str:String) ={
-//    println(str)
-//    dataFrame = dataFrame.groupby()
-//      .union(dataFrame)
-//    dataFrame
-//  }
+  def set(str:String) ={
+    println(str)
+    dataSet.union(dataSet)
+  }
 }
 
 object Grouping{
-  def apply(ds:Dataset[T])= {
-//    new Grouping[T](ds:Dataset[T])
-    print(ds)
+  def apply[T](ds:Dataset[T])= {
+//    println()
+    new Grouping[T](ds:Dataset[T])
   }
 }
