@@ -2,6 +2,7 @@ package com.cnsuning.sngm
 
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.functions._
 
 /**https://stackoverflow.com/questions/36784735/how-to-flatmap-a-nested-dataframe-in-spark
   *
@@ -17,7 +18,7 @@ object dataFrameToDataSet {
 
     val dataFrame:DataFrame = spark.createDataFrame(Seq(
       (1, "20181213", "杭 州 市"),
-      (2, "20150505", "苏 州 市"),
+      (2, "20181213", "苏 州 市"),
       (3, "20190109", "南 京 市")
     )).toDF("id","statis_date","city_nm")
 
@@ -39,13 +40,25 @@ object dataFrameToDataSet {
 //    val data = dataSet.flatMap()
 //    data.show()
 
-    val s = for(i <- 1 to 10 by 2 )
-      yield i.toString
+//    val s = for(i <- 1 to 10 by 2 )
+//      yield i.toString
+//
+//    val ss = s.map(("aaa",_))
+//    println(s.getClass)
+//    println(s)
+//    println(ss.getClass)
+//    println(ss)
 
-    val ss = s.map(("aaa",_))
-    println(s.getClass)
-    println(s)
-    println(ss.getClass)
-    println(ss)
+    println("=====================汇聚==============")
+    val dataSet4 = dataSet3.groupBy("city_nm").sum("id").as("sum_id")
+    dataSet4.show()
+    val dataSet5 = dataSet3.groupBy("city_nm").agg(count("statis_date").as("date_cnt"),sum("id").as("id_sum"))
+    dataSet5.show()
+
+//    val dataFrame1 = dataSet3
+
+//    val gg1 = Grouping(dataFrame).set("gggg")
+//    gg1.show()
+
   }
 }
