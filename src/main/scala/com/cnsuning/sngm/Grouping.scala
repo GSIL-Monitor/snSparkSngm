@@ -7,9 +7,15 @@ import org.apache.spark.sql.functions._
 
 class Grouping[T](spark:SparkSession,ds:Dataset[T],gp:Array[String],ag:Seq[(String,String,String)]) {
   private[this] val dataSet:Dataset[T] = ds
+  private[this] var dataSet1:Dataset[T] = ds
   private[this] val gpArr = gp
   private[this] val agSeq = ag
-  println("Grouping Class construct success")
+  println("Grouping Class first construct success")
+
+  def this(spark:SparkSession,ds:Dataset[T],gp:Array[String],ag:Seq[(String,String,String)],ds1:Dataset[T]){
+    this(spark,ds,gp,ag)
+    this.dataSet1 = ds1
+  }
 
   /*重写groupby方法实现接受一个字符串数组并执行dataSet的分组
   * 要实现这个做法，你需要在数组参数后添加一个冒号和一个 _* 符号
@@ -24,17 +30,18 @@ class Grouping[T](spark:SparkSession,ds:Dataset[T],gp:Array[String],ag:Seq[(Stri
         .agg(sum(agSeq.head._3).as(agSeq.head._1),agSeq.tail.map(x => sum(x._3).as(x._1)):_*)
         .as[(String,String,String,BigInt,BigInt,BigInt,BigInt,BigInt)]
     println("result class is " + ds.getClass)
-    Grouping(spark,dsgp,this.gpArr,this.agSeq)
+    Grouping(spark,this.dataSet,this.gpArr,this.agSeq,dsgp)
   }
 
   def set(subGp:Array[String]) ={
     if(!subGp.map(gpArr.contains(_)).reduce(_&&_))
-      Grouping(spark,this.dataSet,gpArr,agSeq)
+      Grouping(spark,this.dataSet,this.gpArr,this.agSeq)
     else{
-      val dsset = this.dataSet.union()
-      this.groupby(subGp)
+//      val dsset = this.dataSet.union()
+//      this.groupby(subGp)
+      println("===================================")
     }
-    Grouping(spark,dsset,this.gpArr,this.agSeq)
+//    Grouping(spark,dsset,this.gpArr,this.agSeq)
   }
 
   def show= dataSet.show
@@ -46,5 +53,9 @@ class Grouping[T](spark:SparkSession,ds:Dataset[T],gp:Array[String],ag:Seq[(Stri
 object Grouping{
   def apply[T](spark:SparkSession,ds:Dataset[T],gp:Array[String],ag:Seq[(String,String,String)])= {
     new Grouping[T](spark,ds:Dataset[T],gp,ag)
+  }
+
+  def apply[T](spark:SparkSession,ds:Dataset[T],gp:Array[String],ag:Seq[(String,String,String)],ds1:Dataset[T])= {
+    new Grouping[T](spark,ds:Dataset[T],gp,ag,ds1)
   }
 }

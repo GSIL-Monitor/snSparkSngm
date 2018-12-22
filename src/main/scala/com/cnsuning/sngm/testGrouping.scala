@@ -42,7 +42,7 @@ object testGrouping {
     println(d.getClass)
     d.show
     val e = d.set(Array("state","area_cd"))
-    e.show
+//    e.sh
 
 //    val a=(String,String,Int)
 //    println(a.getClass)
