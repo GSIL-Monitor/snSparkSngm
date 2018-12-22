@@ -59,7 +59,7 @@ object dataFrameToDataSet {
 
     println("===================== test of grouping sets =====================")
     dataSet3.show()
-    val gg1 = Grouping(dataSet3).set("aaasss").show()
+//    val gg1 = Grouping(dataSet3).set("aaasss").show()
 //    gg1.show()
 
   }
