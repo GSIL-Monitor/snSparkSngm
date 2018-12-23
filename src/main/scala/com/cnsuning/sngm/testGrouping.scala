@@ -36,18 +36,19 @@ object testGrouping {
     )
 
 
-    val dsG = Grouping(spark,dataSet,Array("state","area_cd","city_cd"),seq1)
-    dsG.show
-    val d =dsG.groupby()
-    println(d.getClass)
-    d.show
-    val e = d.set(Array("state","area_cd"))
-//    e.sh
+//    val dsG = Grouping(spark,dataSet,Array("state","area_cd","city_cd"),seq1)
+//    dsG.show
+//    val d =dsG.groupby()
+//    println(d.getClass)
+////    d.show
+//    val e = d.set(Array("state","area_cd"))
+////    e.sh
 
 //    val a=(String,String,Int)
 //    println(a.getClass)
+    println("================= 20181223 new start ===========")
+    val vvv = GroupingSets(spark,dataSet,Array("state","area_cd","city_cd"),seq1)
 
-
-
+    vvv.show
   }
 }
