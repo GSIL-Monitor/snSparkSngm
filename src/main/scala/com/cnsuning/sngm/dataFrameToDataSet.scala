@@ -26,11 +26,14 @@ object dataFrameToDataSet {
     dataFrame.show()
     import spark.implicits._
     val  dataSet = dataFrame.as[Info]
+//    dataSet.groupBy()
     dataSet.show()
+//    println("dataset type is "+ dataSet.getClass +"11111111111111")
+
     dataSet.drop("statis_date").show()
 
     val dataSet2 = dataFrame.as[(Int,String,String)]
-    println("==================" + dataSet2.getClass)
+//    println("==================" + dataSet2.getClass)
     dataSet2.show()
 
     val dataSet3 = dataSet2.flatMap{

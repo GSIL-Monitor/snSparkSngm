@@ -1,6 +1,7 @@
 package com.cnsuning.sngm
 
 import org.apache.spark.SparkConf
+import org.apache.spark.sql.catalyst.parser.SqlBaseParser.GroupingSetContext
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
@@ -26,6 +27,7 @@ object testGrouping {
     val dataSet = dataFrame.as[(String,String,String,Int)]
     dataSet.groupBy("state","area_cd","city_cd").agg(sum("pay_amnt").as("sum_amnt"),count("pay_amnt").as("cnt_amnt")).show()
 
+    println("===================== using user defined class =============")
 
     val seq1 = Seq(
       ("amnt_sum1" , "sum" ,"pay_amnt"),
@@ -36,8 +38,11 @@ object testGrouping {
     )
 
 
-//    val dsG = Grouping(spark,dataSet,Array("state","area_cd","city_cd"),seq1)
-//    dsG.show
+    val dsG = GroupingSets(spark,dataSet,Array("state","area_cd","city_cd"),seq1)
+    dsG.show
+
+    val dsG2 = GroupingSets(spark,dataSet,Array("state","area_cd","city_cd"),seq1,dataSet)
+    dsG2.show
 //    val d =dsG.groupby()
 //    println(d.getClass)
 ////    d.show
@@ -46,9 +51,9 @@ object testGrouping {
 
 //    val a=(String,String,Int)
 //    println(a.getClass)
-    println("================= 20181223 new start ===========")
-    val vvv = GroupingSets(spark,dataSet,Array("state","area_cd","city_cd"),seq1)
-
-    vvv.show
+//    println("================= 20181223 new start ===========")
+//    val vvv = GroupingSets(spark,dataSet,Array("state","area_cd","city_cd"),seq1)
+//
+//    vvv.show
   }
 }
