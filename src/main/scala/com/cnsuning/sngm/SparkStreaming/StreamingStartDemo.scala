@@ -13,7 +13,7 @@ object StreamingStartDemo {
     val conf = new SparkConf().setAppName("StreamingFirst").setMaster("local")
     val ssc = new StreamingContext(conf,Seconds(1))
     ssc.sparkContext.setLogLevel("WARN")
-    val lines = ssc.socketTextStream("localhost",7777)
+    val lines = ssc.socketTextStream("sngm.cnsuning.com",80)
     val errorLines = lines.filter(_.contains("error"))
     errorLines.print()
     ssc.start()
