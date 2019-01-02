@@ -4,6 +4,9 @@ package com.cnsuning.sngm
   *
   *
   */
+import java.text.SimpleDateFormat
+import java.util.Date
+
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.functions.{lit, _}
 import org.apache.spark.sql.{DataFrame, SparkSession}
@@ -97,10 +100,14 @@ object initStoreMainDataVersion9 {
 //      .withColumn("district_nm",lit(""))
 //      .drop("admin_city_cd")
     //      .drop("org_cd")
+val now = new Date()
+    val dateFormat:SimpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+    val etl_time = dateFormat.format(now)
 
     val rsltDF = strDF.join(strType,Seq("idry_site_tp_cd","sub_plant_tp_cd"),"inner")
       .drop("idry_site_tp_cd").drop("sub_plant_tp_cd")
         .join(strPos,Seq("str_cd"),"left")
+        .withColumn("etl_time",lit(etl_time))
 
     rsltDF.write.mode("overwrite").saveAsTable("sospdm.t_sngm_init_str_original") // 此句会Drop原先的表，然后按照DF的内容自己建立一个。
 
