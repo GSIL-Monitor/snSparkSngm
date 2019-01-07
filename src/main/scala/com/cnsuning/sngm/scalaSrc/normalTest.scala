@@ -1,8 +1,8 @@
-package com.cnsuning.sngm
+package com.cnsuning.sngm.scalaSrc
 
 import org.apache.spark.SparkConf
+import org.apache.spark.sql.functions.{lit, sum}
 import org.apache.spark.sql.{DataFrame, SparkSession}
-import org.apache.spark.sql.functions._
 
 /**
   *
