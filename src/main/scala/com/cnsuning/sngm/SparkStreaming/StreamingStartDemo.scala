@@ -17,8 +17,8 @@ object StreamingStartDemo {
     val ssc = new StreamingContext(conf,Seconds(1))
     ssc.sparkContext.setLogLevel("WARN")
 
-    val lines = ssc.socketTextStream("127.0.0.1",7777) //nc -L -p 777
-    val errorLines = lines.filter(_.contains("Failed"))
+    val lines = ssc.socketTextStream("127.0.0.1",7777) //nc -L -p 7777
+    val errorLines = lines.filter(_.contains("INFO"))
     errorLines.print()
 //    lines.print(10)
     ssc.start()

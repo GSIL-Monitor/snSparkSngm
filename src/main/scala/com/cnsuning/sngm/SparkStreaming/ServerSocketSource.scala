@@ -9,7 +9,6 @@ import scala.io.Source
   */
 object ServerSocketSource {
   def main(args: Array[String]): Unit = {
-
     for(i <- 0 until 3 ){
       val SS = new ServerSocket(7777)
       val CS = SS.accept()
@@ -18,12 +17,12 @@ object ServerSocketSource {
       for( line <- filePointer.getLines() ){
         Thread.sleep(100)
         println(line)
-
         outputStream.writeObject(line)
         outputStream.flush()
       }
-
       println("=================================  No."+ i + " times file scan!  ================================")
     }
   }
 }
+
+
