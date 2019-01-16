@@ -1,5 +1,5 @@
 package com.cnsuning.sngm.scalaSrc
-
+//http://www.cnblogs.com/MOBIN/p/5618747.html
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.functions.{lit, sum}
 import org.apache.spark.sql.{DataFrame, SparkSession}
