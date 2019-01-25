@@ -3,6 +3,7 @@ package com.cnsuning.sngm.sngm10
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.functions._
+import org.apache.spark.storage.StorageLevel
 
 /**
   * name:cumulateExponent
@@ -27,8 +28,8 @@ object cumulateExponent {
     spark.sql("use sngmsvc")
 //    define query sentence
     val queryStrResMap = "select city_cd,str_type,str_cd,res_cd,distance from sospdm.sngm_store_res_map t where city_cd = '025'"
-    val queryPayByStr = "select statis_date,city_code city_cd,res_cd,str_cd,pay_amnt rom sospdm.sngm_t_order_width_07_d where " +
-      "statis_date <='"+statis_date+"' and statis_date >'"+DateUtils(statis_date,"yyyyMMdd",Duration-30)+"' and city_cd = '025'"
+    val queryPayByStr = "select statis_date,city_code city_cd,res_cd,str_cd,pay_amnt from sospdm.sngm_t_order_width_07_d where " +
+      "statis_date <='"+statis_date+"' and statis_date >'"+DateUtils(statis_date,"yyyyMMdd",Duration-30)+"' and city_code = '025'"
 //    do lazy query and transform
     val dfOriginalResMap = spark.sql(queryStrResMap)
     val dfOriginalStrPay = spark.sql(queryPayByStr)
@@ -48,20 +49,29 @@ object cumulateExponent {
       .groupBy("statis_date","city_cd","str_type","str_cd").agg(sum("pay_amnt").as("pay_amnt"))
 
 //  put dfPay5km & dfPay1km to hive temproray table ,use hive's advance function
-    dfPay5kmPerStr.createOrReplaceTempView("dfPay5kmPerStr"+Duration.toString)
-    dfPay1kmPerStr.createOrReplaceTempView("dfPay1kmPerStr"+Duration.toString)
-    dfPay5kmPerStr.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_duration_extremum_tmp")
+    dfPay5kmPerStr.createOrReplaceTempView("dfPay5kmPerStr"+Duration.abs.toString)
+    dfPay1kmPerStr.createOrReplaceTempView("dfPay1kmPerStr"+Duration.abs.toString)
+    dfPay5kmPerStr.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_duration_extremum_tmp5")
+    dfPay1kmPerStr.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_duration_extremum_tmp1")
+    dfPay5kmPerStr.persist(StorageLevel.MEMORY_ONLY)
+    dfPay1kmPerStr.persist(StorageLevel.MEMORY_ONLY)
 
-//    val dfQuantile = spark.sql("select city_cd,str_type," +
-//      "percentile_approx(pay_amnt,0.75) pay_amnt_75,percentile_approx(pay_amnt,0.25) pay_amnt_25,min(pay_amnt) pay_amnt_min " +
-//      "from ( " +
-//            "select statis_date,city_cd,str_type,str_cd,pay_amnt " +
-//            "from ( " +
-//                    "select statis_date,city_cd,str_type,str_cd,sum(pay_amnt) pay_amnt from dfPay1kmPerStr"+Duration.toString +
-//                    " group by city_cd,str_type,str_cd,"+
-//                  ") t where statis_date >'"+DateUtils(statis_date,"yyyyMMdd",-30)+"' " +
-//      ") t group by city_cd,str_type ")
+    val dfQuantile = spark.sql("select city_cd,str_type," +
+      "percentile_approx(pay_amnt,0.75) pay_amnt_75,percentile_approx(pay_amnt,0.25) pay_amnt_25,min(pay_amnt) pay_amnt_min " +
+      "from ( " +
+            "select statis_date,city_cd,str_type,str_cd,pay_amnt " +
+            "from ( " +
+                    "select statis_date,city_cd,str_type,str_cd, " +
+                            "sum(pay_amnt) over(partition by city_cd,str_type,str_cd order by statis_date asc rows  between 6 preceding and current row) pay_amnt " +
+                    "from dfPay5kmPerStr"+Duration.abs.toString +
+                    " union all "+
+                    "select statis_date,city_cd,str_type,str_cd, " +
+                            "sum(pay_amnt) over(partition by city_cd,str_type,str_cd order by statis_date asc rows  between 6 preceding and current row) pay_amnt " +
+                    "from dfPay1kmPerStr"+Duration.abs.toString +
+                  " ) t where statis_date >'"+DateUtils(statis_date,"yyyyMMdd",-30)+"' " +
+      ") t group by city_cd,str_type ")
 
+    dfQuantile.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_duration_extremum_tmp")
 
   }
   /*
@@ -78,7 +88,7 @@ object cumulateExponent {
 //    create temp table
     spark.sql("use sngmsvc")
     spark.sql(
-      """CREATE TABLE IF NOT EXISTS SNGM.T_MOB_CUMULATE_EXTREMUM(
+      """CREATE TABLE IF NOT EXISTS SNGMSVC.T_MOB_CUMULATE_EXTREMUM(
         CITY_CD STRING COMMENT '城市编码',
         STR_TYPE STRING COMMENT '门店业态编码',
         CUMULATE_DAYS STRING COMMENT '累计天数',
