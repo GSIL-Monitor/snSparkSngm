@@ -57,6 +57,6 @@ object functionTest {
     val du = new DateUtils("20190101","yyyyMMdd",-8)
     println(du.process)
 
-    println(DateUtils("20190101","yyyyMMdd",-9))
+    println(DateUtils("20190128","yyyyMMdd",-7))
   }
 }

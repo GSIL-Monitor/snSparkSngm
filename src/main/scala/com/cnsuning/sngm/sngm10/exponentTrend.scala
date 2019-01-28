@@ -70,6 +70,7 @@ object exponentTrend {
     val dateFormat:SimpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
     val etl_time = dateFormat.format(now)
 
+//  redefined the boundary of pay amount to remove outliers
     val dfExtremum =
       dfQuantile.withColumn("pay_amnt_max",col("pay_amnt_75") + col("pay_amnt_75")*1.5 -col("pay_amnt_25")*1.5)
         .withColumn("pay_amnt_min",when(col("pay_amnt_min") < 0 ,lit(0)).otherwise(col("pay_amnt_min")))
@@ -87,7 +88,7 @@ object exponentTrend {
   }
 
   /**
-    * this function used to transformed yesterday's  pay amount to a Exponent at every city's store type,distance of store with res limited in 5/3/1 kilometer.
+    * this function used to transformed statis_date's  pay amount to a Exponent at every city's store type,distance of store with res limited in 5/3/1 kilometer.
     * */
   def produceCurrentDateExponent(statis_date:String,lstMon:String,spark:SparkSession): Unit ={
     spark.sql("use sngmsvc")
@@ -98,7 +99,7 @@ object exponentTrend {
     val queryPayByStrComp = "select city_code city_cd,res_cd,str_cd,pay_amnt from sospdm.sngm_t_order_width_07_d t where " +
       "statis_date = '"+ lstMon +"' and city_code = '025'" //sales detail of one month ago
 
-    val queryStrResMap = "select city_cd,str_type,str_cd,res_cd,distance from sospdm.sngm_store_res_map t where city_cd='025'"
+    val queryStrResMap = "select city_cd,str_cd,res_cd,distance from sospdm.sngm_store_res_map t where city_cd='025'"
     val queryStrDetail = "select str_cd,str_nm,str_type,city_nm from sospdm.t_sngm_init_str_detail where city_cd='025'"
     val queryExtremum = "select city_cd,str_type,pay_amnt_max,pay_amnt_min,pay_amnt_delta from sngmsvc.t_mob_trend_extremum where statis_date='"+statis_date+"' and city_cd ='025'"
 //    do lazy query and transform
@@ -184,16 +185,11 @@ object exponentTrend {
               ) partitioned by (STATIS_DATE string comment '数据日期' )
               stored as rcfile""")
 
-// when the number of extremum at NanJing(025) less then 3 ,it's means table has been truncated and should be update.
-  val querySql = "select * from SNGMSVC.T_MOB_TREND_EXTREMUM where statis_date = '"+statis_date+"'"
-  val dfExtrm = spark.sql(querySql)
-  if(dfExtrm.filter(col("city_cd")==="025").count() < 5 )
-//  if(true)
-  {
+//   获取各门店30天内分别在1&5km距离商圈上的每日销售明细，并按箱线图四分位数逻辑去除离群值，得到各业态的极值和极差。
     produceLastMonthExtremum(statis_date,lstMon,spark)
-  }
 
-// do produce yesterday's exponent
+
+// do produce statis_date's exponent
   produceCurrentDateExponent(statis_date,lstMon,spark)
   spark.stop()
   }

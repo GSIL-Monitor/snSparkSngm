@@ -1,5 +1,8 @@
 package com.cnsuning.sngm.sngm10
 
+import java.text.SimpleDateFormat
+import java.util.Date
+
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.functions._
@@ -24,12 +27,12 @@ object cumulateExponent {
   *  this function used to get maximum & minimum cumulate pay amount on 7/15/30 days
   *  at every city's store type,distance of store with res limited in 5/3/1 kilometer.
   * */
-  def produceGivenDurationExtremum(statis_date:String,Duration:Int,spark:SparkSession){
+  def produceGivenDurationExtremum(statis_date:String,duration:Int,spark:SparkSession):DataFrame = {
     spark.sql("use sngmsvc")
-//    define query sentence
+//    define query sentence,statis_date in ( 30+duration days past ,current date] !!!
     val queryStrResMap = "select city_cd,str_type,str_cd,res_cd,distance from sospdm.sngm_store_res_map t where city_cd = '025'"
     val queryPayByStr = "select statis_date,city_code city_cd,res_cd,str_cd,pay_amnt from sospdm.sngm_t_order_width_07_d where " +
-      "statis_date <='"+statis_date+"' and statis_date >'"+DateUtils(statis_date,"yyyyMMdd",Duration-30)+"' and city_code = '025'"
+      "statis_date <='"+statis_date+"' and statis_date >'"+DateUtils(statis_date,"yyyyMMdd",duration-30)+"' and city_code = '025'"
 //    do lazy query and transform
     val dfOriginalResMap = spark.sql(queryStrResMap)
     val dfOriginalStrPay = spark.sql(queryPayByStr)
@@ -48,39 +51,125 @@ object cumulateExponent {
     val dfPay1kmPerStr = df2.join(dfPay,Seq("city_cd","str_cd","res_cd"),"inner")
       .groupBy("statis_date","city_cd","str_type","str_cd").agg(sum("pay_amnt").as("pay_amnt"))
 
-//  put dfPay5km & dfPay1km to hive temproray table ,use hive's advance function
-    dfPay5kmPerStr.createOrReplaceTempView("dfPay5kmPerStr"+Duration.abs.toString)
-    dfPay1kmPerStr.createOrReplaceTempView("dfPay1kmPerStr"+Duration.abs.toString)
-    dfPay5kmPerStr.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_duration_extremum_tmp5")
-    dfPay1kmPerStr.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_duration_extremum_tmp1")
-    dfPay5kmPerStr.persist(StorageLevel.MEMORY_ONLY)
-    dfPay1kmPerStr.persist(StorageLevel.MEMORY_ONLY)
+//  put pay amount of every store every day on 1&5km at res to hive temproray table ,then use hive's advance function percentile and over window.
+    dfPay5kmPerStr.createOrReplaceTempView("dfPay5kmPerStr"+duration.abs.toString)
+    dfPay1kmPerStr.createOrReplaceTempView("dfPay1kmPerStr"+duration.abs.toString)
 
-    val dfQuantile = spark.sql("select city_cd,str_type," +
-      "percentile_approx(pay_amnt,0.75) pay_amnt_75,percentile_approx(pay_amnt,0.25) pay_amnt_25,min(pay_amnt) pay_amnt_min " +
+//  use window function to get summary pay amount of ${duration} days recently on every store . then get the 25% & 75% quantile.
+    val dfQuantile = spark.sql(" select city_cd,str_type," +
+      "percentile_approx(pay_amnt,0.75) pay_amnt_75,percentile_approx(pay_amnt,0.25) pay_amnt_25,max(pay_amnt) pay_amnt_max,min(pay_amnt) pay_amnt_min " +
       "from ( " +
             "select statis_date,city_cd,str_type,str_cd,pay_amnt " +
             "from ( " +
                     "select statis_date,city_cd,str_type,str_cd, " +
-                            "sum(pay_amnt) over(partition by city_cd,str_type,str_cd order by statis_date asc rows  between 6 preceding and current row) pay_amnt " +
-                    "from dfPay5kmPerStr"+Duration.abs.toString +
+                            "sum(pay_amnt) over(partition by city_cd,str_type,str_cd order by statis_date asc rows  between "+(duration.abs-1)+" preceding and current row) pay_amnt " +
+                    "from dfPay5kmPerStr"+duration.abs.toString +
                     " union all "+
                     "select statis_date,city_cd,str_type,str_cd, " +
-                            "sum(pay_amnt) over(partition by city_cd,str_type,str_cd order by statis_date asc rows  between 6 preceding and current row) pay_amnt " +
-                    "from dfPay1kmPerStr"+Duration.abs.toString +
+                            "sum(pay_amnt) over(partition by city_cd,str_type,str_cd order by statis_date asc rows  between "+(duration.abs-1)+" preceding and current row) pay_amnt " +
+                    "from dfPay1kmPerStr"+duration.abs.toString +
                   " ) t where statis_date >'"+DateUtils(statis_date,"yyyyMMdd",-30)+"' " +
       ") t group by city_cd,str_type ")
+//    dfQuantile.persist(StorageLevel.MEMORY_ONLY)
+//    dfQuantile.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_cumulate_extremum_tmp1"+duration.abs.toString)
 
-    dfQuantile.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_duration_extremum_tmp")
+    //  define etl_time
+    val now = new Date()
+    val dateFormat:SimpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+    val etl_time = dateFormat.format(now)
 
+    //  redefined the boundary of pay amount to remove outliers
+    val dfExtremum =
+      dfQuantile.withColumn("pay_amnt_max",col("pay_amnt_75") + col("pay_amnt_75")*1.5 -col("pay_amnt_25")*1.5)
+        .withColumn("pay_amnt_min",when(col("pay_amnt_min") < 0 ,lit(0)).otherwise(col("pay_amnt_min")))
+        .withColumn("pay_amnt_delta",col("pay_amnt_max") - col("pay_amnt_min"))
+        .withColumn("etl_time",lit(etl_time))
+        .withColumn("duration",lit(duration)) // 注明 数据的累计天数,即跨度
+      .drop("pay_amnt_75").drop("pay_amnt_25")
+//    dfExtremum.persist(StorageLevel.MEMORY_ONLY)
+//    dfExtremum.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_cumulate_extremum_tmp2"+duration.abs.toString)
+
+    dfExtremum //  return a DataFrame
   }
+
+  /*
+  *  this function used to trunsformed statis_date's ${duration} days' pay amount  to exponent at every city's store
+  *  within res's distance limited in 1/3/5km
+  * */
+  def produceCurrentDateExponent(statis_date:String,lstMon:String,duration:Int,spark:SparkSession):DataFrame={
+    spark.sql("use sngmsvc")
+//    define query sentence
+    val queryPayByStr = "select city_code city_cd,res_cd,str_cd,pay_amnt,0 pay_amnt_comp from sospdm.sngm_t_order_width_07_d t where " +
+      "statis_date <= '"+ statis_date +"' " +
+      "and statis_date > '"+DateUtils(statis_date,"yyyyMMdd",duration)+"' and city_code = '025'" //sales detail of current date's ${duration} days past
+
+    val queryPayByStrComp = "select city_code city_cd,res_cd,str_cd,0 pay_amnt,pay_amnt pay_amnt_comp from sospdm.sngm_t_order_width_07_d t where " +
+      "statis_date <= '"+ lstMon +"' " +
+      "and statis_date > '"+DateUtils(lstMon,"yyyyMMdd",duration)+"' and city_code = '025'" //sales detail of compare date's ${duration} days past
+
+    val queryStrResMap = "select city_cd,str_cd,res_cd,distance from sospdm.sngm_store_res_map t where city_cd='025'"
+    val queryStrDetail = "select str_cd,str_nm,str_type,city_nm from sospdm.t_sngm_init_str_detail where city_cd='025'"
+    val queryExtremum = "select city_cd,str_type,cumulate_days,pay_amnt_max,pay_amnt_min,pay_amnt_delta " +
+      "from sngmsvc.t_mob_cumulate_extremum where statis_date='"+statis_date+"'  and city_cd ='025'"
+
+//    do lazy query and transform
+    val dfPayByStr = spark.sql(queryPayByStr).union(spark.sql(queryPayByStrComp))
+      .groupBy("city_cd","res_cd","str_cd")
+      .agg(sum("pay_amnt").as("pay_amnt"),sum("pay_amnt_comp").as("pay_amnt_comp"))
+
+    val dfStr = spark.sql(queryStrDetail)
+    val dfExtremum = spark.sql(queryExtremum)
+      .withColumnRenamed("cumulate_days","day")
+      .filter(col("day") === duration)
+
+    val dfOriginalResMap = spark.sql(queryStrResMap)
+    val df5 = dfOriginalResMap.filter(col("distance") <= 5)
+    val df3 = df5.filter(col("distance") <= 3)
+    val df1 = df3.filter(col("distance") <= 1)
+
+//    do join to limit pay amount in 5/3/1 km
+    val dfPay5km = df5.join(dfPayByStr,Seq("city_cd","str_cd","res_cd"),"inner")
+      .groupBy("city_cd","str_cd")
+      .agg(sum("pay_amnt").as("pay_amnt"),sum("pay_amnt_comp").as("pay_amnt_comp"))
+      .withColumn("distance",lit("5km"))
+
+    val dfPay3km = df3.join(dfPayByStr,Seq("city_cd","str_cd","res_cd"),"inner")
+      .groupBy("city_cd","str_cd")
+      .agg(sum("pay_amnt").as("pay_amnt"),sum("pay_amnt_comp").as("pay_amnt_comp"))
+      .withColumn("distance",lit("3km"))
+
+    val dfPay1km = df1.join(dfPayByStr,Seq("city_cd","str_cd","res_cd"),"inner")
+      .groupBy("city_cd","str_cd")
+      .agg(sum("pay_amnt").as("pay_amnt"),sum("pay_amnt_comp").as("pay_amnt_comp"))
+      .withColumn("distance",lit("1km"))
+
+    val dfPayUnion = dfPay5km.union(dfPay3km).union(dfPay1km)
+      .join(dfStr,Seq("str_cd"),"left")
+
+    //  define etl_time
+    val now = new Date()
+    val dateFormat:SimpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+    val etl_time = dateFormat.format(now)
+
+    //   make pay amount and compare pay amount to be a exponent.
+    val dfExponent = dfPayUnion.join(dfExtremum,Seq("city_cd","str_type"),"left")
+      .withColumn("pay_expnt",(col("pay_amnt")-col("pay_amnt_min"))/col("pay_amnt_delta"))
+      .withColumn("pay_expnt",when(col("pay_expnt")>1,lit(9999)).otherwise(when(col("pay_expnt")<0.001,lit(10)).otherwise(col("pay_expnt")*10000)))
+      .withColumn("pay_amnt_incrs_rate",col("pay_amnt")/col("pay_amnt_comp")-1)
+      .withColumn("day",abs(col("day")))
+      .withColumn("statis_date",lit(statis_date))
+      .withColumn("etl_time",lit(etl_time))
+
+    dfExponent
+  }
+
   /*
   *  main function
   * */
   def main(args: Array[String]): Unit = {
 //    receive parameter from suning IDE dispatcher
     val statis_date = args(0)
-//    val lstMon = args(1)
+    val lstMon = args(1)
 //    define spark session
     val sc = new SparkConf().setAppName("cumulateExponent")
       .set("spark.sql.hive.metastorePartitionPruning", "false")
@@ -98,10 +187,23 @@ object cumulateExponent {
         ETL_TIME TIMESTAMP COMMENT '时间'
         ) partitioned by (STATIS_DATE string comment '数据日期' )
         stored as rcfile""")
-// when the number of extremum at NanJing(025) less then 3 ,it's means table has been truncated and should be update.
-    val querySql = "select * from SNGMSVC.T_MOB_CUMULATE_EXTREMUM where statis_date = '"+statis_date+"'"
-    val dfExtrm = spark.sql(querySql)
+//  获取各门店30天内分别在1&5km距离商圈上的（7/15/30天）累计销售明细，并按箱线图四分位数逻辑去除离群值，得到各业态的极值和极差。
     produceGivenDurationExtremum(statis_date,-7,spark)
+      .union(produceGivenDurationExtremum(statis_date,-15,spark))
+      .union(produceGivenDurationExtremum(statis_date,-30,spark))
+      .createOrReplaceTempView("dfExtremumCumulate")
+//  save the result of union to partitioned table .
+    spark.sql("insert overwrite table sngmsvc.t_mob_cumulate_extremum partition(statis_date='"+statis_date+"') " +
+      "select city_cd,str_type,duration,pay_amnt_max,pay_amnt_min,pay_amnt_delta,etl_time from dfExtremumCumulate")
 
+//  do produce statis_date's exponent
+    produceCurrentDateExponent(statis_date,lstMon,-7,spark)
+        .union(produceCurrentDateExponent(statis_date,lstMon,-15,spark))
+        .union(produceCurrentDateExponent(statis_date,lstMon,-30,spark))
+        .createOrReplaceTempView("dfExponentCumulate")
+
+    spark.sql("insert overwrite sngmsvc.t_mob_cumulate_exponent_d partition(statis_date='"+statis_date+"') " +
+      "select city_cd,city_nm,str_type,str_cd,str_nm,distance,day,pay_expnt,pay_amnt_incrs_rate,etl_time from dfExponentCumulate ")
+    spark.stop()
   }
 }

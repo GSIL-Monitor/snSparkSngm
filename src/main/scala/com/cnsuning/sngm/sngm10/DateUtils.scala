@@ -17,7 +17,7 @@ import java.util.Calendar
   */
 class DateUtils(val date:String,val pattern:String,val duration:Int){
   val dateFormat = new SimpleDateFormat(pattern)
-  val cal = Calendar.getInstance()
+  val cal = Calendar.getInstance
 
   def process:String = {
     val d = dateFormat.parse(date)
