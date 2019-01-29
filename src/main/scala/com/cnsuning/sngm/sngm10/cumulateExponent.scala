@@ -84,7 +84,7 @@ object cumulateExponent {
         .withColumn("pay_amnt_min",when(col("pay_amnt_min") < 0 ,lit(0)).otherwise(col("pay_amnt_min")))
         .withColumn("pay_amnt_delta",col("pay_amnt_max") - col("pay_amnt_min"))
         .withColumn("etl_time",lit(etl_time))
-        .withColumn("duration",lit(duration)) // 注明 数据的累计天数,即跨度
+        .withColumn("duration",lit(duration.abs)) // 注明 数据的累计天数,即跨度
       .drop("pay_amnt_75").drop("pay_amnt_25")
 //    dfExtremum.persist(StorageLevel.MEMORY_ONLY)
 //    dfExtremum.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_cumulate_extremum_tmp2"+duration.abs.toString)
@@ -120,12 +120,12 @@ object cumulateExponent {
     val dfStr = spark.sql(queryStrDetail)
     val dfExtremum = spark.sql(queryExtremum)
       .withColumnRenamed("cumulate_days","day")
-      .filter(col("day") === duration)
+      .filter(col("day") === duration.abs.toString)
 
-    val dfOriginalResMap = spark.sql(queryStrResMap)
-    val df5 = dfOriginalResMap.filter(col("distance") <= 5)
-    val df3 = df5.filter(col("distance") <= 3)
-    val df1 = df3.filter(col("distance") <= 1)
+      val dfOriginalResMap = spark.sql(queryStrResMap)
+      val df5 = dfOriginalResMap.filter(col("distance") <= 5)
+      val df3 = df5.filter(col("distance") <= 3)
+      val df1 = df3.filter(col("distance") <= 1)
 
 //    do join to limit pay amount in 5/3/1 km
     val dfPay5km = df5.join(dfPayByStr,Seq("city_cd","str_cd","res_cd"),"inner")
@@ -156,7 +156,6 @@ object cumulateExponent {
       .withColumn("pay_expnt",(col("pay_amnt")-col("pay_amnt_min"))/col("pay_amnt_delta"))
       .withColumn("pay_expnt",when(col("pay_expnt")>1,lit(9999)).otherwise(when(col("pay_expnt")<0.001,lit(10)).otherwise(col("pay_expnt")*10000)))
       .withColumn("pay_amnt_incrs_rate",col("pay_amnt")/col("pay_amnt_comp")-1)
-      .withColumn("day",abs(col("day")))
       .withColumn("statis_date",lit(statis_date))
       .withColumn("etl_time",lit(etl_time))
 
@@ -197,12 +196,14 @@ object cumulateExponent {
       "select city_cd,str_type,duration,pay_amnt_max,pay_amnt_min,pay_amnt_delta,etl_time from dfExtremumCumulate")
 
 //  do produce statis_date's exponent
-    produceCurrentDateExponent(statis_date,lstMon,-7,spark)
+
+    val dfResult = produceCurrentDateExponent(statis_date,lstMon,-7,spark)
         .union(produceCurrentDateExponent(statis_date,lstMon,-15,spark))
         .union(produceCurrentDateExponent(statis_date,lstMon,-30,spark))
-        .createOrReplaceTempView("dfExponentCumulate")
 
-    spark.sql("insert overwrite sngmsvc.t_mob_cumulate_exponent_d partition(statis_date='"+statis_date+"') " +
+    dfResult.createOrReplaceTempView("dfExponentCumulate")
+
+    spark.sql("insert overwrite table sngmsvc.t_mob_cumulate_exponent_d partition(statis_date='"+statis_date+"') " +
       "select city_cd,city_nm,str_type,str_cd,str_nm,distance,day,pay_expnt,pay_amnt_incrs_rate,etl_time from dfExponentCumulate ")
     spark.stop()
   }
