@@ -31,9 +31,9 @@ object exponentTrend {
     spark.sql("use sngmsvc")
 
 //    define query sentence
-    val queryStrResMap = "select city_cd,str_type,str_cd,res_cd,distance from sospdm.sngm_store_res_map t where city_cd='025'"
+    val queryStrResMap = "select city_cd,str_type,str_cd,res_cd,distance from sospdm.sngm_store_res_map t "/*where city_cd='025'*/
     val queryPayByStr = "select statis_date,city_code city_cd,res_cd,str_cd,pay_amnt from sospdm.sngm_t_order_width_07_d where " +
-                        "statis_date <='" + statis_date + "' and statis_date > '" + lstMon +"' and city_code='025'"
+                        "statis_date <='" + statis_date + "' and statis_date > '" + lstMon +"' " /*and city_code='025'*/
 
 //    do lazy query and transform
     val dfOriginalResMap = spark.sql(queryStrResMap)
@@ -95,13 +95,13 @@ object exponentTrend {
 
 //    define query sentence
     val queryPayByStr = "select city_code city_cd,res_cd,str_cd,pay_amnt from sospdm.sngm_t_order_width_07_d t where " +
-      "statis_date = '"+ statis_date +"' and city_code = '025'" //sales detail of current date
+      "statis_date = '"+ statis_date +"' " /*and city_code = '025'*/ //sales detail of current date
     val queryPayByStrComp = "select city_code city_cd,res_cd,str_cd,pay_amnt from sospdm.sngm_t_order_width_07_d t where " +
-      "statis_date = '"+ lstMon +"' and city_code = '025'" //sales detail of one month ago
+      "statis_date = '"+ lstMon +"' "/*and city_code = '025'*/ //sales detail of one month ago
 
-    val queryStrResMap = "select city_cd,str_cd,res_cd,distance from sospdm.sngm_store_res_map t where city_cd='025'"
-    val queryStrDetail = "select str_cd,str_nm,str_type,city_nm from sospdm.t_sngm_init_str_detail where city_cd='025'"
-    val queryExtremum = "select city_cd,str_type,pay_amnt_max,pay_amnt_min,pay_amnt_delta from sngmsvc.t_mob_trend_extremum where statis_date='"+statis_date+"' and city_cd ='025'"
+    val queryStrResMap = "select city_cd,str_cd,res_cd,distance from sospdm.sngm_store_res_map t " /*where city_cd='025'*/
+    val queryStrDetail = "select str_cd,str_nm,str_type,city_nm from sospdm.t_sngm_init_str_detail " /*where city_cd='025'*/
+    val queryExtremum = "select city_cd,str_type,pay_amnt_max,pay_amnt_min,pay_amnt_delta from sngmsvc.t_mob_trend_extremum where statis_date='"+statis_date+"' "/* and city_cd ='025'*/
 //    do lazy query and transform
     val dfOriginalResMap = spark.sql(queryStrResMap)
     val dfOriginalStrPay = spark.sql(queryPayByStr)

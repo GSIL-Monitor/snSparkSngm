@@ -28,9 +28,9 @@ object cumulateBrandExponent {
   * */
   def produceGivenDurationBrandExtremum(statis_date:String,duration:Int,spark:SparkSession):DataFrame={
     spark.sql("use sngmsvc")
-    val queryStrResMap = "select city_cd,str_type,str_cd,res_cd,distance from sospdm.sngm_store_res_map t where city_cd = '025'"
+    val queryStrResMap = "select city_cd,str_type,str_cd,res_cd,distance from sospdm.sngm_store_res_map t "//where city_cd = '025'
     val queryPayByStrBrand = "select statis_date,city_code city_cd,res_cd,str_cd,brand_cd,brand_nm,pay_amnt from sospdm.sngm_t_order_width_07_d where " +
-      "statis_date <='"+statis_date+"' and statis_date >'"+DateUtils(statis_date,"yyyyMMdd",duration-30)+"' and city_code = '025'"
+      "statis_date <='"+statis_date+"' and statis_date >'"+DateUtils(statis_date,"yyyyMMdd",duration-30)+"' "//and city_code = '025'
 
 //    do lazy query and transform
     val dfOriginalResMap = spark.sql(queryStrResMap)
@@ -87,21 +87,21 @@ object cumulateBrandExponent {
   *  this function used to trunsformed statis_date's ${duration} days' pay amount  to exponent at every store's brand
   *  within res's distance limited in 1/3/5km
   * */
-  def produceCurrentDataBrandExponent(statis_date:String,lstMon:String,duration:Int,spark:SparkSession):DataFrame={
+  def produceCurrentDateBrandExponent(statis_date:String,lstMon:String,duration:Int,spark:SparkSession):DataFrame={
     spark.sql("use sngmsvc")
 //    define query sentence
     val queryPayByStr = "select city_code city_cd,res_cd,str_cd,brand_cd,brand_nm,pay_amnt,0 pay_amnt_comp from sospdm.sngm_t_order_width_07_d t where " +
       "statis_date <= '"+ statis_date +"' " +
-      "and statis_date > '"+DateUtils(statis_date,"yyyyMMdd",duration)+"' and city_code = '025'" //sales detail of current date's ${duration} days past
+      "and statis_date > '"+DateUtils(statis_date,"yyyyMMdd",duration)+"' "/*and city_code = '025'*/ //sales detail of current date's ${duration} days past
 
     val queryPayByStrComp = "select city_code city_cd,res_cd,str_cd,brand_cd,brand_nm,0 pay_amnt,pay_amnt pay_amnt_comp from sospdm.sngm_t_order_width_07_d t where " +
       "statis_date <= '"+ lstMon +"' " +
-      "and statis_date > '"+DateUtils(lstMon,"yyyyMMdd",duration)+"' and city_code = '025'" //sales detail of compare date's ${duration} days past
+      "and statis_date > '"+DateUtils(lstMon,"yyyyMMdd",duration)+"' " /*and city_code = '025'*/ //sales detail of compare date's ${duration} days past
 
-    val queryStrResMap = "select city_cd,str_cd,res_cd,distance from sospdm.sngm_store_res_map t where city_cd='025'"
-    val queryStrDetail = "select str_cd,str_nm,str_type,city_nm from sospdm.t_sngm_init_str_detail where city_cd='025'"
+    val queryStrResMap = "select city_cd,str_cd,res_cd,distance from sospdm.sngm_store_res_map t "//where city_cd='025'
+    val queryStrDetail = "select str_cd,str_nm,str_type,city_nm from sospdm.t_sngm_init_str_detail "// where city_cd='025'
     val queryExtremum = "select city_cd,str_cd,cumulate_days,pay_amnt_max,pay_amnt_min,pay_amnt_delta " +
-      "from sngmsvc.t_mob_cumulate_brand_extremum where statis_date='"+statis_date+"'  and city_cd ='025'"
+      "from sngmsvc.t_mob_cumulate_brand_extremum where statis_date='"+statis_date+"' "/* and city_cd ='025'*/
 
 //    do lazy query and transform
     val dfPayByStrBrand = spark.sql(queryPayByStr).union(spark.sql(queryPayByStrComp))
@@ -180,23 +180,26 @@ object cumulateBrandExponent {
          ETL_TIME TIMESTAMP COMMENT '时间'
          ) partitioned by (STATIS_DATE string comment '数据日期' )
          stored as rcfile""")
-
+//  get extremum
     produceGivenDurationBrandExtremum(statis_date,-7,spark)
       .union(produceGivenDurationBrandExtremum(statis_date,-15,spark))
       .union(produceGivenDurationBrandExtremum(statis_date,-30,spark))
       .createOrReplaceTempView("dfBrandExtremumCumulate")
-
+//  save extremum
     spark.sql("insert overwrite table sngmsvc.t_mob_cumulate_brand_extremum partition(statis_date='"+statis_date+"') " +
       "select city_cd,str_cd,duration,pay_amnt_max,pay_amnt_min,pay_amnt_delta,etl_time from dfBrandExtremumCumulate")
 
-    produceCurrentDataBrandExponent(statis_date,lstMon,-7,spark)
-        .union(produceCurrentDataBrandExponent(statis_date,lstMon,-15,spark))
-        .union(produceCurrentDataBrandExponent(statis_date,lstMon,-30,spark))
-        .createOrReplaceTempView("dfBrandExponentCumulate")
-    spark.sql("insert overwrite table sngmsvc.t_mob_cumulate_exponent_brand_d partition(statis_date='"+statis_date+"' " +
-      "select city_cd,city_nm,str_type,str_cd,str_nm,distance,day,brand_cd,brand_nm,pay_expnt,pay_expnt_incrs,etl_time from dfBrandExtremumCumulate")
+//    get exponent
+    produceCurrentDateBrandExponent(statis_date,lstMon,-7,spark)
+        .union(produceCurrentDateBrandExponent(statis_date,lstMon,-15,spark))
+        .union(produceCurrentDateBrandExponent(statis_date,lstMon,-30,spark))
+        .write.mode("overwrite").saveAsTable("sngmsvc.t_mob_cumulate_exponent_brand_d_tmp")
+//    save exponent
+    spark.sql("insert overwrite table sngmsvc.t_mob_cumulate_exponent_brand_d partition(statis_date='"+statis_date+"') " +
+      "select city_cd,city_nm,str_type,str_cd,str_nm,distance,day,brand_cd,brand_nm,pay_expnt,pay_expnt_incrs,etl_time from sngmsvc.t_mob_cumulate_exponent_brand_d_tmp")
 //    df1.persist(StorageLevel.MEMORY_ONLY)
 //    df1.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_cumulate_brand_exponent_tmp")
+
     spark.stop()
   }
 }

@@ -4,8 +4,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 
 import org.apache.spark.SparkConf
+import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.storage.StorageLevel
 
 /**
   * name:cumulateGdsExponent
@@ -22,9 +24,9 @@ import org.apache.spark.sql.{DataFrame, SparkSession}
 object cumulateGdsExponent {
   def produceGivenDurationGdsExtremum(statis_date:String,duration:Int,spark:SparkSession):DataFrame={
     spark.sql("use sngmsvc")
-    val queryStrResMap = "select city_cd,str_type,str_cd,res_cd,distance from sospdm.sngm_store_res_map t where city_cd = '025' "
+    val queryStrResMap = "select city_cd,str_type,str_cd,res_cd,distance from sospdm.sngm_store_res_map t  "//where city_cd = '025'
     val queryPayByStrGds = "select statis_date,city_code city_cd,res_cd,str_cd,gds_cd,pay_amnt from sospdm.sngm_t_order_width_07_d where " +
-      "statis_date <='"+statis_date+"' and statis_date >'"+DateUtils(statis_date,"yyyyMMdd",duration-30)+"' and city_code = '025'"
+      "statis_date <='"+statis_date+"' and statis_date >'"+DateUtils(statis_date,"yyyyMMdd",duration-30)+"' "//and city_code = '025'
 
 //    do lazy query and transform
 val dfOriginalResMap = spark.sql(queryStrResMap)
@@ -55,11 +57,11 @@ val dfOriginalResMap = spark.sql(queryStrResMap)
               "select statis_date,city_cd,str_type,str_cd,pay_amnt " +
                 "from ( " +
                            "select statis_date,city_cd,str_type,str_cd,gds_cd, " +
-                                "sum(pay_amnt) over(partition by city_cd,str_type,str_cd,brand_cd order by statis_date asc rows  between "+(duration.abs-1)+" preceding and current row) pay_amnt " +
+                                "sum(pay_amnt) over(partition by city_cd,str_type,str_cd,gds_cd order by statis_date asc rows  between "+(duration.abs-1)+" preceding and current row) pay_amnt " +
                             "from dfPay5kmPerGds"+duration.abs.toString +
                             " union all "+
                            "select statis_date,city_cd,str_type,str_cd,gds_cd, " +
-                                 "sum(pay_amnt) over(partition by city_cd,str_type,str_cd,brand_cd order by statis_date asc rows  between "+(duration.abs-1)+" preceding and current row) pay_amnt " +
+                                 "sum(pay_amnt) over(partition by city_cd,str_type,str_cd,gds_cd order by statis_date asc rows  between "+(duration.abs-1)+" preceding and current row) pay_amnt " +
                             "from dfPay1kmPerGds"+duration.abs.toString +
                     " ) t where statis_date >'"+DateUtils(statis_date,"yyyyMMdd",-30)+"' " +
       ") t group by city_cd,str_type,str_cd ")
@@ -73,6 +75,81 @@ val dfOriginalResMap = spark.sql(queryStrResMap)
       .withColumn("etl_time",lit(etl_time))
       .withColumn("duration",lit(duration.abs))
     dfExtremum
+  }
+
+  /*
+  *  this function used to trunsformed statis_date's ${duration} days' pay amount  to exponent at every store's gds
+  *  within res's distance limited in 1/3/5km
+  * */
+  def produceCurrentDateGdsExponent(statis_date:String,duration:Int,spark:SparkSession):DataFrame={
+    spark.sql("use sngmsvc")
+    // define query sentence
+    val queryPayByStr = "select city_code city_cd,res_cd,str_cd,gds_cd,gds_nm,pay_amnt from sospdm.sngm_t_order_width_07_d t where " +
+      "statis_date <= '"+ statis_date +"' " +
+      "and statis_date > '"+DateUtils(statis_date,"yyyyMMdd",duration)+"' "/*and city_code = '025'*/ //sales detail of current date's ${duration} days past
+
+    val queryStrResMap = "select city_cd,str_cd,res_cd,distance from sospdm.sngm_store_res_map t "//where city_cd='025'
+    val queryStrDetail = "select str_cd,str_nm,str_type,city_nm from sospdm.t_sngm_init_str_detail " // where city_cd='025'
+    val queryExtremum = "select city_cd,str_cd,cumulate_days,pay_amnt_max,pay_amnt_min,pay_amnt_delta " +
+      "from sngmsvc.t_mob_cumulate_gds_extremum where statis_date='"+statis_date+"'  " //and city_cd ='025'
+
+    // do lazy query and transform
+    val dfPayByStrGds = spark.sql(queryPayByStr)
+    val dfOriginalResMap = spark.sql(queryStrResMap)
+    val dfStr = spark.sql(queryStrDetail)
+    val dfExtremum = spark.sql(queryExtremum)
+    dfPayByStrGds.persist(StorageLevel.MEMORY_ONLY)
+
+    val dfPayByStrGdsAgg = dfPayByStrGds.groupBy("city_cd","str_cd","res_cd","gds_cd")
+                            .agg(sum("pay_amnt").as("pay_amnt"))
+
+    // get unique gds_cd mapping to gds_nm
+    val dfGds = dfPayByStrGds.select("gds_cd","gds_nm").distinct()
+    val rankSpec = Window.partitionBy("gds_cd").orderBy(col("gds_nm").asc)
+    val dfGdsUnique = dfGds.withColumn("row_number",row_number().over(rankSpec))
+                      .filter(col("row_number") === 1 ).drop("row_number")
+    dfGdsUnique.persist(StorageLevel.MEMORY_ONLY)
+    dfGdsUnique.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_cumulate_gds_detail_tmp")
+
+    // get store-res mapping on distance
+    val df5 = dfOriginalResMap.filter(col("distance") <= 5)
+    val df3 = df5.filter(col("distance") <= 3)
+    val df1 = df3.filter(col("distance") <= 1)
+
+    // do join to limit pay amount in 5/3/1 km
+    val dfPay5km = df5.join(dfPayByStrGdsAgg,Seq("city_cd","str_cd","res_cd"),"inner")
+      .groupBy("city_cd","str_cd","gds_cd")
+      .agg(sum("pay_amnt").as("pay_amnt"))
+      .withColumn("distance",lit("5km"))
+
+    val dfPay3km = df3.join(dfPayByStrGdsAgg,Seq("city_cd","str_cd","res_cd"),"inner")
+      .groupBy("city_cd","str_cd","gds_cd")
+      .agg(sum("pay_amnt").as("pay_amnt"))
+      .withColumn("distance",lit("3km"))
+
+    val dfPay1km = df1.join(dfPayByStrGdsAgg,Seq("city_cd","str_cd","res_cd"),"inner")
+      .groupBy("city_cd","str_cd","gds_cd")
+      .agg(sum("pay_amnt").as("pay_amnt"))
+      .withColumn("distance",lit("1km"))
+
+    // union all distance DataFrame
+    val dfPayUnion = dfPay5km.union(dfPay3km).union(dfPay1km)
+      .join(dfStr,Seq("str_cd"),"left")
+      .join(dfGdsUnique,Seq("gds_cd"),"left")
+
+    //  define etl_time
+    val now = new Date()
+    val dateFormat:SimpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+    val etl_time = dateFormat.format(now)
+
+    // mark store' gds pay amount to be a exponent .
+    val dfExponent = dfPayUnion.join(dfExtremum,Seq("city_cd","str_cd"),"left")
+      .withColumn("pay_expnt",(col("pay_amnt")-col("pay_amnt_min"))/col("pay_amnt_delta"))
+      .withColumn("pay_expnt",when(col("pay_expnt")>1,lit(9999)).otherwise(when(col("pay_expnt")<0.001,lit(10)).otherwise(col("pay_expnt")*10000)))
+      .withColumn("statis_date",lit(statis_date))
+      .withColumn("etl_time",lit(etl_time))
+
+    dfExponent
   }
 
   /*
@@ -99,11 +176,23 @@ val dfOriginalResMap = spark.sql(queryStrResMap)
     ) PARTITIONED BY (STATIS_DATE STRING COMMENT '数据日期')
     STORED AS RCFILE""")
 
+//    get and save extremum
     produceGivenDurationGdsExtremum(statis_date,-7,spark)
       .union(produceGivenDurationGdsExtremum(statis_date,-15,spark))
       .union(produceGivenDurationGdsExtremum(statis_date,-30,spark))
       .createOrReplaceTempView("dfGdsExtremumCumulate")
-    spark.sql("insert overwrite table sngmsvc.t_mob_cumulate_brand_extremum partition(statis_date='"+statis_date+"') " +
+    spark.sql("insert overwrite table sngmsvc.t_mob_cumulate_gds_extremum partition(statis_date='"+statis_date+"') " +
       "select city_cd,str_cd,duration,pay_amnt_max,pay_amnt_min,pay_amnt_delta,etl_time from dfGdsExtremumCumulate")
+
+//    get and save exponent
+    val dfResult = produceCurrentDateGdsExponent(statis_date,-7,spark)
+      .union(produceCurrentDateGdsExponent(statis_date,-15,spark))
+      .union(produceCurrentDateGdsExponent(statis_date,-30,spark))
+
+    dfResult.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_cumulate_exponent_gds_d_tmp")
+
+    spark.sql("insert overwrite table sngmsvc.t_mob_cumulate_exponent_gds_d partition(statis_date ='"+statis_date+"') " +
+      " select city_cd,city_nm,str_type,str_cd,str_nm,distance,cumulate_days,gds_cd,gds_nm,pay_expnt,etl_time from sngmsvc.t_mob_cumulate_exponent_gds_d_tmp")
+
   }
 }

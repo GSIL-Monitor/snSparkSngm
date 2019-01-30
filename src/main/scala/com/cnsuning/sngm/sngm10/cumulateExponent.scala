@@ -30,9 +30,9 @@ object cumulateExponent {
   def produceGivenDurationExtremum(statis_date:String,duration:Int,spark:SparkSession):DataFrame = {
     spark.sql("use sngmsvc")
 //    define query sentence,statis_date in ( 30+duration days past ,current date] !!!
-    val queryStrResMap = "select city_cd,str_type,str_cd,res_cd,distance from sospdm.sngm_store_res_map t where city_cd = '025'"
+    val queryStrResMap = "select city_cd,str_type,str_cd,res_cd,distance from sospdm.sngm_store_res_map t "/*where city_cd = '025'*/
     val queryPayByStr = "select statis_date,city_code city_cd,res_cd,str_cd,pay_amnt from sospdm.sngm_t_order_width_07_d where " +
-      "statis_date <='"+statis_date+"' and statis_date >'"+DateUtils(statis_date,"yyyyMMdd",duration-30)+"' and city_code = '025'"
+      "statis_date <='"+statis_date+"' and statis_date >'"+DateUtils(statis_date,"yyyyMMdd",duration-30)+"' "/*and city_code = '025'*/
 //    do lazy query and transform
     val dfOriginalResMap = spark.sql(queryStrResMap)
     val dfOriginalStrPay = spark.sql(queryPayByStr)
@@ -101,16 +101,16 @@ object cumulateExponent {
 //    define query sentence
     val queryPayByStr = "select city_code city_cd,res_cd,str_cd,pay_amnt,0 pay_amnt_comp from sospdm.sngm_t_order_width_07_d t where " +
       "statis_date <= '"+ statis_date +"' " +
-      "and statis_date > '"+DateUtils(statis_date,"yyyyMMdd",duration)+"' and city_code = '025'" //sales detail of current date's ${duration} days past
+      "and statis_date > '"+DateUtils(statis_date,"yyyyMMdd",duration)+"' "/*and city_code = '025'*/ //sales detail of current date's ${duration} days past
 
     val queryPayByStrComp = "select city_code city_cd,res_cd,str_cd,0 pay_amnt,pay_amnt pay_amnt_comp from sospdm.sngm_t_order_width_07_d t where " +
       "statis_date <= '"+ lstMon +"' " +
-      "and statis_date > '"+DateUtils(lstMon,"yyyyMMdd",duration)+"' and city_code = '025'" //sales detail of compare date's ${duration} days past
+      "and statis_date > '"+DateUtils(lstMon,"yyyyMMdd",duration)+"' " /*and city_code = '025'*/ //sales detail of compare date's ${duration} days past
 
-    val queryStrResMap = "select city_cd,str_cd,res_cd,distance from sospdm.sngm_store_res_map t where city_cd='025'"
-    val queryStrDetail = "select str_cd,str_nm,str_type,city_nm from sospdm.t_sngm_init_str_detail where city_cd='025'"
+    val queryStrResMap = "select city_cd,str_cd,res_cd,distance from sospdm.sngm_store_res_map t "/*where city_cd='025'*/
+    val queryStrDetail = "select str_cd,str_nm,str_type,city_nm from sospdm.t_sngm_init_str_detail "/*where city_cd='025'*/
     val queryExtremum = "select city_cd,str_type,cumulate_days,pay_amnt_max,pay_amnt_min,pay_amnt_delta " +
-      "from sngmsvc.t_mob_cumulate_extremum where statis_date='"+statis_date+"'  and city_cd ='025'"
+      "from sngmsvc.t_mob_cumulate_extremum where statis_date='"+statis_date+"' "/*  and city_cd ='025'*/
 
 //    do lazy query and transform
     val dfPayByStr = spark.sql(queryPayByStr).union(spark.sql(queryPayByStrComp))
@@ -201,10 +201,10 @@ object cumulateExponent {
         .union(produceCurrentDateExponent(statis_date,lstMon,-15,spark))
         .union(produceCurrentDateExponent(statis_date,lstMon,-30,spark))
 
-    dfResult.createOrReplaceTempView("dfExponentCumulate")
+    dfResult.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_cumulate_exponent_d_tmp")
 
     spark.sql("insert overwrite table sngmsvc.t_mob_cumulate_exponent_d partition(statis_date='"+statis_date+"') " +
-      "select city_cd,city_nm,str_type,str_cd,str_nm,distance,day,pay_expnt,pay_amnt_incrs_rate,etl_time from dfExponentCumulate ")
+      "select city_cd,city_nm,str_type,str_cd,str_nm,distance,day,pay_expnt,pay_amnt_incrs_rate,etl_time from sngmsvc.t_mob_cumulate_exponent_d_tmp ")
     spark.stop()
   }
 }
