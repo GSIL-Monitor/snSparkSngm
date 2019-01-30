@@ -31,24 +31,31 @@ object cumulateExponent {
     spark.sql("use sngmsvc")
 //    define query sentence,statis_date in ( 30+duration days past ,current date] !!!
     val queryStrResMap = "select city_cd,str_type,str_cd,res_cd,distance from sospdm.sngm_store_res_map t "/*where city_cd = '025'*/
-    val queryPayByStr = "select statis_date,city_code city_cd,res_cd,str_cd,pay_amnt from sospdm.sngm_t_order_width_07_d where " +
+    val queryPayByRes = "select statis_date,city_code city_cd,res_cd,dept_cd,pay_amnt from sospdm.sngm_t_order_width_07_d where " +
       "statis_date <='"+statis_date+"' and statis_date >'"+DateUtils(statis_date,"yyyyMMdd",duration-30)+"' "/*and city_code = '025'*/
+    val queryTypeDeptMap = "select str_type,dept_cd from sospdm.sngm_type_dept_td a"
+
 //    do lazy query and transform
     val dfOriginalResMap = spark.sql(queryStrResMap)
-    val dfOriginalStrPay = spark.sql(queryPayByStr)
+    val dfOriginalStrPay = spark.sql(queryPayByRes)
+    val dfStrDept = spark.sql(queryTypeDeptMap)
+    dfStrDept.persist(StorageLevel.MEMORY_ONLY)
     val df1 = dfOriginalResMap.filter(col("distance")<=5)
+    df1.persist(StorageLevel.MEMORY_ONLY)
     val df2 = df1.filter(col("distance")<=1)
 
 //    do summary by store res per day
-    val dfPay = dfOriginalStrPay.groupBy("statis_date","city_cd","res_cd","str_cd")
+    val dfPay = dfOriginalStrPay.groupBy("statis_date","city_cd","res_cd","dept_cd")
       .agg(sum("pay_amnt").as("pay_amnt"))
 
-//    get summary pay amount of 5 km store-res mapping ,then do summary to get store pay amount at every day.
-    val dfPay5kmPerStr = df1.join(dfPay,Seq("city_cd","str_cd","res_cd"),"inner")
+//    get the dept_cd of store in sale,then join res pay amount on dept within 5km at every day.
+    val dfPay5kmPerStr = df1.join(dfStrDept,Seq("str_type"),"left")
+      .join(dfPay,Seq("city_cd","dept_cd","res_cd"),"inner")
       .groupBy("statis_date","city_cd","str_type","str_cd").agg(sum("pay_amnt").as("pay_amnt"))
 
 //    same approach to get 1 km
-    val dfPay1kmPerStr = df2.join(dfPay,Seq("city_cd","str_cd","res_cd"),"inner")
+    val dfPay1kmPerStr = df2.join(dfStrDept,Seq("str_type"),"left")
+      .join(dfPay,Seq("city_cd","dept_cd","res_cd"),"inner")
       .groupBy("statis_date","city_cd","str_type","str_cd").agg(sum("pay_amnt").as("pay_amnt"))
 
 //  put pay amount of every store every day on 1&5km at res to hive temproray table ,then use hive's advance function percentile and over window.
@@ -86,8 +93,8 @@ object cumulateExponent {
         .withColumn("etl_time",lit(etl_time))
         .withColumn("duration",lit(duration.abs)) // 注明 数据的累计天数,即跨度
       .drop("pay_amnt_75").drop("pay_amnt_25")
-//    dfExtremum.persist(StorageLevel.MEMORY_ONLY)
-//    dfExtremum.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_cumulate_extremum_tmp2"+duration.abs.toString)
+    dfStrDept.unpersist()
+    df1.unpersist()
 
     dfExtremum //  return a DataFrame
   }
@@ -99,46 +106,55 @@ object cumulateExponent {
   def produceCurrentDateExponent(statis_date:String,lstMon:String,duration:Int,spark:SparkSession):DataFrame={
     spark.sql("use sngmsvc")
 //    define query sentence
-    val queryPayByStr = "select city_code city_cd,res_cd,str_cd,pay_amnt,0 pay_amnt_comp from sospdm.sngm_t_order_width_07_d t where " +
+    val queryPayByRes = "select city_code city_cd,res_cd,dept_cd,pay_amnt,0 pay_amnt_comp from sospdm.sngm_t_order_width_07_d t where " +
       "statis_date <= '"+ statis_date +"' " +
       "and statis_date > '"+DateUtils(statis_date,"yyyyMMdd",duration)+"' "/*and city_code = '025'*/ //sales detail of current date's ${duration} days past
 
-    val queryPayByStrComp = "select city_code city_cd,res_cd,str_cd,0 pay_amnt,pay_amnt pay_amnt_comp from sospdm.sngm_t_order_width_07_d t where " +
+    val queryPayByResComp = "select city_code city_cd,res_cd,dept_cd,0 pay_amnt,pay_amnt pay_amnt_comp from sospdm.sngm_t_order_width_07_d t where " +
       "statis_date <= '"+ lstMon +"' " +
       "and statis_date > '"+DateUtils(lstMon,"yyyyMMdd",duration)+"' " /*and city_code = '025'*/ //sales detail of compare date's ${duration} days past
 
-    val queryStrResMap = "select city_cd,str_cd,res_cd,distance from sospdm.sngm_store_res_map t "/*where city_cd='025'*/
-    val queryStrDetail = "select str_cd,str_nm,str_type,city_nm from sospdm.t_sngm_init_str_detail "/*where city_cd='025'*/
+    val queryStrResMap = "select city_cd,str_cd,res_cd,str_type,distance from sospdm.sngm_store_res_map t "/*where city_cd='025'*/
+    val queryStrDetail = "select str_cd,str_type,str_nm,city_nm from sospdm.t_sngm_init_str_detail "/*where city_cd='025'*/
     val queryExtremum = "select city_cd,str_type,cumulate_days,pay_amnt_max,pay_amnt_min,pay_amnt_delta " +
       "from sngmsvc.t_mob_cumulate_extremum where statis_date='"+statis_date+"' "/*  and city_cd ='025'*/
+    val queryTypeDeptMap = "select str_type,dept_cd from sospdm.sngm_type_dept_td a"
 
 //    do lazy query and transform
-    val dfPayByStr = spark.sql(queryPayByStr).union(spark.sql(queryPayByStrComp))
-      .groupBy("city_cd","res_cd","str_cd")
+    val dfPayByRes = spark.sql(queryPayByRes).union(spark.sql(queryPayByResComp))
+      .groupBy("city_cd","res_cd","dept_cd")
       .agg(sum("pay_amnt").as("pay_amnt"),sum("pay_amnt_comp").as("pay_amnt_comp"))
+    dfPayByRes.persist(StorageLevel.MEMORY_ONLY)
+
+    val dfStrDept = spark.sql(queryTypeDeptMap)
+    dfStrDept.persist(StorageLevel.MEMORY_ONLY)
 
     val dfStr = spark.sql(queryStrDetail)
     val dfExtremum = spark.sql(queryExtremum)
       .withColumnRenamed("cumulate_days","day")
       .filter(col("day") === duration.abs.toString)
 
-      val dfOriginalResMap = spark.sql(queryStrResMap)
-      val df5 = dfOriginalResMap.filter(col("distance") <= 5)
-      val df3 = df5.filter(col("distance") <= 3)
-      val df1 = df3.filter(col("distance") <= 1)
+    val dfOriginalResMap = spark.sql(queryStrResMap)
+    val df5 = dfOriginalResMap.filter(col("distance") <= 5)
+    df5.persist(StorageLevel.MEMORY_ONLY)
+    val df3 = df5.filter(col("distance") <= 3)
+    val df1 = df3.filter(col("distance") <= 1)
 
 //    do join to limit pay amount in 5/3/1 km
-    val dfPay5km = df5.join(dfPayByStr,Seq("city_cd","str_cd","res_cd"),"inner")
+    val dfPay5km = df5.join(dfStrDept,Seq("str_type"),"left")
+      .join(dfPayByRes,Seq("city_cd","dept_cd","res_cd"),"inner")
       .groupBy("city_cd","str_cd")
       .agg(sum("pay_amnt").as("pay_amnt"),sum("pay_amnt_comp").as("pay_amnt_comp"))
       .withColumn("distance",lit("5km"))
 
-    val dfPay3km = df3.join(dfPayByStr,Seq("city_cd","str_cd","res_cd"),"inner")
+    val dfPay3km = df3.join(dfStrDept,Seq("str_type"),"left")
+      .join(dfPayByRes,Seq("city_cd","dept_cd","res_cd"),"inner")
       .groupBy("city_cd","str_cd")
       .agg(sum("pay_amnt").as("pay_amnt"),sum("pay_amnt_comp").as("pay_amnt_comp"))
       .withColumn("distance",lit("3km"))
 
-    val dfPay1km = df1.join(dfPayByStr,Seq("city_cd","str_cd","res_cd"),"inner")
+    val dfPay1km = df1.join(dfStrDept,Seq("str_type"),"left")
+      .join(dfPayByRes,Seq("city_cd","dept_cd","res_cd"),"inner")
       .groupBy("city_cd","str_cd")
       .agg(sum("pay_amnt").as("pay_amnt"),sum("pay_amnt_comp").as("pay_amnt_comp"))
       .withColumn("distance",lit("1km"))
@@ -158,6 +174,9 @@ object cumulateExponent {
       .withColumn("pay_amnt_incrs_rate",col("pay_amnt")/col("pay_amnt_comp")-1)
       .withColumn("statis_date",lit(statis_date))
       .withColumn("etl_time",lit(etl_time))
+    dfPayByRes.unpersist()
+    dfStrDept.unpersist()
+    df5.unpersist()
 
     dfExponent
   }

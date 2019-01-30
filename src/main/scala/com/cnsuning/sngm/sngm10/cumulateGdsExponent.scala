@@ -25,26 +25,34 @@ object cumulateGdsExponent {
   def produceGivenDurationGdsExtremum(statis_date:String,duration:Int,spark:SparkSession):DataFrame={
     spark.sql("use sngmsvc")
     val queryStrResMap = "select city_cd,str_type,str_cd,res_cd,distance from sospdm.sngm_store_res_map t  "//where city_cd = '025'
-    val queryPayByStrGds = "select statis_date,city_code city_cd,res_cd,str_cd,gds_cd,pay_amnt from sospdm.sngm_t_order_width_07_d where " +
+    val queryPayByStrGds = "select statis_date,city_code city_cd,res_cd,dept_cd,gds_cd,pay_amnt from sospdm.sngm_t_order_width_07_d where " +
       "statis_date <='"+statis_date+"' and statis_date >'"+DateUtils(statis_date,"yyyyMMdd",duration-30)+"' "//and city_code = '025'
+    val queryTypeDeptMap = "select str_type,dept_cd from sospdm.sngm_type_dept_td a"
 
 //    do lazy query and transform
-val dfOriginalResMap = spark.sql(queryStrResMap)
-    val dfOriginalStrPayBrand = spark.sql(queryPayByStrGds)
+    val dfStrDept = spark.sql(queryTypeDeptMap)
+    dfStrDept.persist(StorageLevel.MEMORY_ONLY)
+
+    val dfOriginalResMap = spark.sql(queryStrResMap)
+    val dfOriginalResPayBrand = spark.sql(queryPayByStrGds)
     val df1 = dfOriginalResMap.filter(col("distance")<=5)
+    df1.persist(StorageLevel.MEMORY_ONLY)
     val df2 = dfOriginalResMap.filter(col("distance")<=1)
 
 //    do summary by store res gds per day
-    val dfPay = dfOriginalStrPayBrand.groupBy("statis_date","city_cd","res_cd","str_cd","gds_cd")
+    val dfPay = dfOriginalResPayBrand.groupBy("statis_date","city_cd","res_cd","dept_cd","gds_cd")
       .agg(sum("pay_amnt").as("pay_amnt"))
+    dfPay.persist(StorageLevel.MEMORY_ONLY)
 
     //    filter distance< 5km ,and summary pay amount on every day every store every brand
-    val dfPay5km = df1.join(dfPay,Seq("city_cd","str_cd","res_cd"),"inner")
+    val dfPay5km = df1.join(dfStrDept,Seq("str_type"),"left")
+      .join(dfPay,Seq("city_cd","dept_cd","res_cd"),"inner")
       .groupBy("statis_date","city_cd","str_type","str_cd","gds_cd")
       .agg(sum("pay_amnt").as("pay_amnt"))
 
     //    same approach to get 1km
-    val dfPay1km = df2.join(dfPay,Seq("city_cd","str_cd","res_cd"),"inner")
+    val dfPay1km = df2.join(dfStrDept,Seq("str_type"),"left")
+      .join(dfPay,Seq("city_cd","dept_cd","res_cd"),"inner")
       .groupBy("statis_date","city_cd","str_type","str_cd","gds_cd")
       .agg(sum("pay_amnt").as("pay_amnt"))
 
@@ -74,6 +82,10 @@ val dfOriginalResMap = spark.sql(queryStrResMap)
       .withColumn("pay_amnt_delta",col("pay_amnt_max") - col("pay_amnt_min"))
       .withColumn("etl_time",lit(etl_time))
       .withColumn("duration",lit(duration.abs))
+
+    dfPay.unpersist()
+    df1.unpersist()
+    dfStrDept.unpersist()
     dfExtremum
   }
 
@@ -84,27 +96,32 @@ val dfOriginalResMap = spark.sql(queryStrResMap)
   def produceCurrentDateGdsExponent(statis_date:String,duration:Int,spark:SparkSession):DataFrame={
     spark.sql("use sngmsvc")
     // define query sentence
-    val queryPayByStr = "select city_code city_cd,res_cd,str_cd,gds_cd,gds_nm,pay_amnt from sospdm.sngm_t_order_width_07_d t where " +
+    val queryPayByRes = "select city_code city_cd,res_cd,dept_cd,gds_cd,gds_nm,pay_amnt from sospdm.sngm_t_order_width_07_d t where " +
       "statis_date <= '"+ statis_date +"' " +
       "and statis_date > '"+DateUtils(statis_date,"yyyyMMdd",duration)+"' "/*and city_code = '025'*/ //sales detail of current date's ${duration} days past
 
-    val queryStrResMap = "select city_cd,str_cd,res_cd,distance from sospdm.sngm_store_res_map t "//where city_cd='025'
+    val queryStrResMap = "select city_cd,str_cd,res_cd,str_type,distance from sospdm.sngm_store_res_map t "//where city_cd='025'
     val queryStrDetail = "select str_cd,str_nm,str_type,city_nm from sospdm.t_sngm_init_str_detail " // where city_cd='025'
     val queryExtremum = "select city_cd,str_cd,cumulate_days,pay_amnt_max,pay_amnt_min,pay_amnt_delta " +
       "from sngmsvc.t_mob_cumulate_gds_extremum where statis_date='"+statis_date+"'  " //and city_cd ='025'
+    val queryTypeDeptMap = "select str_type,dept_cd from sospdm.sngm_type_dept_td a"
 
     // do lazy query and transform
-    val dfPayByStrGds = spark.sql(queryPayByStr)
+    val dfPayByResGds = spark.sql(queryPayByRes)
     val dfOriginalResMap = spark.sql(queryStrResMap)
     val dfStr = spark.sql(queryStrDetail)
     val dfExtremum = spark.sql(queryExtremum)
-    dfPayByStrGds.persist(StorageLevel.MEMORY_ONLY)
+    dfPayByResGds.persist(StorageLevel.MEMORY_ONLY)
 
-    val dfPayByStrGdsAgg = dfPayByStrGds.groupBy("city_cd","str_cd","res_cd","gds_cd")
+    val dfStrDept = spark.sql(queryTypeDeptMap)
+    dfStrDept.persist(StorageLevel.MEMORY_ONLY)
+
+    val dfPayByStrGdsAgg = dfPayByResGds.groupBy("city_cd","dept_cd","res_cd","gds_cd")
                             .agg(sum("pay_amnt").as("pay_amnt"))
+    dfPayByStrGdsAgg.persist(StorageLevel.MEMORY_ONLY)
 
     // get unique gds_cd mapping to gds_nm
-    val dfGds = dfPayByStrGds.select("gds_cd","gds_nm").distinct()
+    val dfGds = dfPayByResGds.select("gds_cd","gds_nm").distinct()
     val rankSpec = Window.partitionBy("gds_cd").orderBy(col("gds_nm").asc)
     val dfGdsUnique = dfGds.withColumn("row_number",row_number().over(rankSpec))
                       .filter(col("row_number") === 1 ).drop("row_number")
@@ -113,21 +130,25 @@ val dfOriginalResMap = spark.sql(queryStrResMap)
 
     // get store-res mapping on distance
     val df5 = dfOriginalResMap.filter(col("distance") <= 5)
+    df5.persist(StorageLevel.MEMORY_ONLY)
     val df3 = df5.filter(col("distance") <= 3)
     val df1 = df3.filter(col("distance") <= 1)
 
     // do join to limit pay amount in 5/3/1 km
-    val dfPay5km = df5.join(dfPayByStrGdsAgg,Seq("city_cd","str_cd","res_cd"),"inner")
+    val dfPay5km = df5.join(dfStrDept,Seq("str_type"),"left")
+      .join(dfPayByStrGdsAgg,Seq("city_cd","dept_cd","res_cd"),"inner")
       .groupBy("city_cd","str_cd","gds_cd")
       .agg(sum("pay_amnt").as("pay_amnt"))
       .withColumn("distance",lit("5km"))
 
-    val dfPay3km = df3.join(dfPayByStrGdsAgg,Seq("city_cd","str_cd","res_cd"),"inner")
+    val dfPay3km = df3.join(dfStrDept,Seq("str_type"),"left")
+      .join(dfPayByStrGdsAgg,Seq("city_cd","dept_cd","res_cd"),"inner")
       .groupBy("city_cd","str_cd","gds_cd")
       .agg(sum("pay_amnt").as("pay_amnt"))
       .withColumn("distance",lit("3km"))
 
-    val dfPay1km = df1.join(dfPayByStrGdsAgg,Seq("city_cd","str_cd","res_cd"),"inner")
+    val dfPay1km = df1.join(dfStrDept,Seq("str_type"),"left")
+      .join(dfPayByStrGdsAgg,Seq("city_cd","dept_cd","res_cd"),"inner")
       .groupBy("city_cd","str_cd","gds_cd")
       .agg(sum("pay_amnt").as("pay_amnt"))
       .withColumn("distance",lit("1km"))
@@ -148,6 +169,12 @@ val dfOriginalResMap = spark.sql(queryStrResMap)
       .withColumn("pay_expnt",when(col("pay_expnt")>1,lit(9999)).otherwise(when(col("pay_expnt")<0.001,lit(10)).otherwise(col("pay_expnt")*10000)))
       .withColumn("statis_date",lit(statis_date))
       .withColumn("etl_time",lit(etl_time))
+
+    dfPayByResGds.unpersist()
+    dfStrDept.unpersist()
+    dfPayByStrGdsAgg.unpersist()
+    dfGdsUnique.unpersist()
+    df5.unpersist()
 
     dfExponent
   }
