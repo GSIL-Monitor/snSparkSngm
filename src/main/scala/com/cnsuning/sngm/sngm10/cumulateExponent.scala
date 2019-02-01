@@ -4,6 +4,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 
 import org.apache.spark.SparkConf
+import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.functions._
 import org.apache.spark.storage.StorageLevel
@@ -41,11 +42,13 @@ object cumulateExponent {
     val dfStrDept = spark.sql(queryTypeDeptMap)
     dfStrDept.persist(StorageLevel.MEMORY_ONLY)
     val df1 = dfOriginalResMap.filter(col("distance")<=5)
+        .repartition(col("city_cd"))
     df1.persist(StorageLevel.MEMORY_ONLY)
     val df2 = df1.filter(col("distance")<=1)
 
 //    do summary by store res per day
-    val dfPay = dfOriginalStrPay.groupBy("statis_date","city_cd","res_cd","dept_cd")
+    val dfPay = dfOriginalStrPay.repartition(col("city_cd"),col("statis_date"),col("res_cd"),col("dept_cd"))
+      .groupBy("statis_date","city_cd","res_cd","dept_cd")
       .agg(sum("pay_amnt").as("pay_amnt"))
 
 //    get the dept_cd of store in sale,then join res pay amount on dept within 5km at every day.
@@ -59,10 +62,21 @@ object cumulateExponent {
       .groupBy("statis_date","city_cd","str_type","str_cd").agg(sum("pay_amnt").as("pay_amnt"))
 
 //  put pay amount of every store every day on 1&5km at res to hive temproray table ,then use hive's advance function percentile and over window.
-    dfPay5kmPerStr.createOrReplaceTempView("dfPay5kmPerStr"+duration.abs.toString)
-    dfPay1kmPerStr.createOrReplaceTempView("dfPay1kmPerStr"+duration.abs.toString)
-
-//  use window function to get summary pay amount of ${duration} days recently on every store . then get the 25% & 75% quantile.
+//    dfPay5kmPerStr.createOrReplaceTempView("dfPay5kmPerStr"+duration.abs.toString)
+//    dfPay1kmPerStr.createOrReplaceTempView("dfPay1kmPerStr"+duration.abs.toString)
+//    use spark core window function to get summary
+    val dfPayDetail = dfPay5kmPerStr.union(dfPay1kmPerStr).repartition(col("city_cd"),col("str_type"),col("str_cd"))
+    val rankSpec = Window.partitionBy(col("city_cd"),col("str_type"),col("str_cd"))
+                        .orderBy(col("statis_date").asc).rowsBetween(duration+1,0)
+    dfPayDetail.withColumn("pay_amnt",sum("pay_amnt").over(rankSpec))
+      .filter(col("statis_date") > DateUtils(statis_date,"yyyyMMdd",-30))
+      .repartition(col("city_cd"),col("str_type"))
+      .createOrReplaceTempView("QuantileView"+duration.abs.toString)
+    val dfQuantile1 = spark.sql("select city_cd,str_type, " +
+      "percentile_approx(pay_amnt,0.75) pay_amnt_75,percentile_approx(pay_amnt,0.25) pay_amnt_25,max(pay_amnt) pay_amnt_max,min(pay_amnt) pay_amnt_min " +
+      "from QuantileView"+duration.abs.toString+" t group by city_cd,str_type")
+/*
+//    use window function to get summary pay amount of ${duration} days recently on every store . then get the 25% & 75% quantile.
     val dfQuantile = spark.sql(" select city_cd,str_type," +
       "percentile_approx(pay_amnt,0.75) pay_amnt_75,percentile_approx(pay_amnt,0.25) pay_amnt_25,max(pay_amnt) pay_amnt_max,min(pay_amnt) pay_amnt_min " +
       "from ( " +
@@ -77,8 +91,7 @@ object cumulateExponent {
                     "from dfPay1kmPerStr"+duration.abs.toString +
                   " ) t where statis_date >'"+DateUtils(statis_date,"yyyyMMdd",-30)+"' " +
       ") t group by city_cd,str_type ")
-//    dfQuantile.persist(StorageLevel.MEMORY_ONLY)
-//    dfQuantile.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_cumulate_extremum_tmp1"+duration.abs.toString)
+*/
 
     //  define etl_time
     val now = new Date()
@@ -87,7 +100,7 @@ object cumulateExponent {
 
     //  redefined the boundary of pay amount to remove outliers
     val dfExtremum =
-      dfQuantile.withColumn("pay_amnt_max",col("pay_amnt_75") + col("pay_amnt_75")*1.5 -col("pay_amnt_25")*1.5)
+      dfQuantile1.withColumn("pay_amnt_max",col("pay_amnt_75") + col("pay_amnt_75")*1.5 -col("pay_amnt_25")*1.5)
         .withColumn("pay_amnt_min",when(col("pay_amnt_min") < 0 ,lit(0)).otherwise(col("pay_amnt_min")))
         .withColumn("pay_amnt_delta",col("pay_amnt_max") - col("pay_amnt_min"))
         .withColumn("etl_time",lit(etl_time))
@@ -191,6 +204,7 @@ object cumulateExponent {
 //    define spark session
     val sc = new SparkConf().setAppName("cumulateExponent")
       .set("spark.sql.hive.metastorePartitionPruning", "false")
+      .set("spark.sql.auto.repartition","true")
     val spark = SparkSession.builder().config(sc).enableHiveSupport().getOrCreate()
 //    create temp table
     spark.sql("use sngmsvc")

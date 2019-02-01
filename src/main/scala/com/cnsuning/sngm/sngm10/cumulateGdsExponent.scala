@@ -34,8 +34,10 @@ object cumulateGdsExponent {
     dfStrDept.persist(StorageLevel.MEMORY_ONLY)
 
     val dfOriginalResMap = spark.sql(queryStrResMap)
+      .repartition(col("city_cd"))
     val dfOriginalResPayBrand = spark.sql(queryPayByStrGds)
-    val df1 = dfOriginalResMap.filter(col("distance")<=5)
+      .repartition(col("statis_date"),col("city_cd"),col("res_cd"),col("dept_cd"))
+    val df1 = dfOriginalResMap.filter(col("distance")<=5).repartition(col("city_cd"))
     df1.persist(StorageLevel.MEMORY_ONLY)
     val df2 = dfOriginalResMap.filter(col("distance")<=1)
 
@@ -56,8 +58,19 @@ object cumulateGdsExponent {
       .groupBy("statis_date","city_cd","str_type","str_cd","gds_cd")
       .agg(sum("pay_amnt").as("pay_amnt"))
 
-    dfPay1km.createOrReplaceTempView("dfPay1kmPerGds"+duration.abs.toString)
-    dfPay5km.createOrReplaceTempView("dfPay5kmPerGds"+duration.abs.toString)
+//    dfPay1km.createOrReplaceTempView("dfPay1kmPerGds"+duration.abs.toString)
+//    dfPay5km.createOrReplaceTempView("dfPay5kmPerGds"+duration.abs.toString)
+//  use spark core function to get summary
+    val dfPayGdsDetail = dfPay5km.union(dfPay1km).repartition(col("city_cd"),col("str_type"),col("str_cd"),col("gds_cd"))
+    val rankSpec = Window.partitionBy(col("city_cd"),col("str_type"),col("str_cd"),col("gds_cd"))
+                        .orderBy(col("statis_date").asc).rowsBetween(duration+1,0)
+
+    val dfQuantile1 = dfPayGdsDetail.withColumn("pay_amnt",sum("pay_amnt").over(rankSpec))
+      .filter(col("statis_date") > DateUtils(statis_date,"yyyyMMdd",-30))
+      .groupBy("city_cd","str_type","str_cd")
+      .agg(max("pay_amnt").as("pay_amnt_max"),min("pay_amnt").as("pay_amnt_min"))
+
+
 //    use window function to get summary pay amount of ${duration} days recently on every store's every Gds . then get the maximum and minimum.
     val dfQuantile = spark.sql(" select city_cd,str_type,str_cd, " +
       "max(pay_amnt) pay_amnt_max,min(pay_amnt) pay_amnt_min " +
@@ -78,7 +91,7 @@ object cumulateGdsExponent {
     val dateFormat:SimpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
     val etl_time = dateFormat.format(now)
 
-    val dfExtremum = dfQuantile.withColumn("pay_amnt_min",when(col("pay_amnt_min") < 0 ,lit(0)).otherwise(col("pay_amnt_min")))
+    val dfExtremum = dfQuantile1.withColumn("pay_amnt_min",when(col("pay_amnt_min") < 0 ,lit(0)).otherwise(col("pay_amnt_min")))
       .withColumn("pay_amnt_delta",col("pay_amnt_max") - col("pay_amnt_min"))
       .withColumn("etl_time",lit(etl_time))
       .withColumn("duration",lit(duration.abs))
@@ -107,11 +120,14 @@ object cumulateGdsExponent {
     val queryTypeDeptMap = "select str_type,dept_cd from sospdm.sngm_type_dept_td a"
 
     // do lazy query and transform
-    val dfPayByResGds = spark.sql(queryPayByRes)
-    val dfOriginalResMap = spark.sql(queryStrResMap)
+    val dfPayByResGds = spark.sql(queryPayByRes).repartition(col("city_cd"),col("dept_cd"),col("res_cd"),col("gds_cd"))
+    dfPayByResGds.persist(StorageLevel.MEMORY_ONLY)
+
+    val dfOriginalResMap = spark.sql(queryStrResMap).repartition(col("city_cd"))
     val dfStr = spark.sql(queryStrDetail)
     val dfExtremum = spark.sql(queryExtremum)
-    dfPayByResGds.persist(StorageLevel.MEMORY_ONLY)
+      .withColumnRenamed("cumulate_days","day")
+      .filter(col("day") === duration.abs.toString)
 
     val dfStrDept = spark.sql(queryTypeDeptMap)
     dfStrDept.persist(StorageLevel.MEMORY_ONLY)
@@ -140,6 +156,8 @@ object cumulateGdsExponent {
       .groupBy("city_cd","str_cd","gds_cd")
       .agg(sum("pay_amnt").as("pay_amnt"))
       .withColumn("distance",lit("5km"))
+    dfPay5km.persist(StorageLevel.MEMORY_ONLY)
+    dfPay5km.write.mode("overwrite").saveAsTable("sngmsvc.dfPay5km_tmp")
 
     val dfPay3km = df3.join(dfStrDept,Seq("str_type"),"left")
       .join(dfPayByStrGdsAgg,Seq("city_cd","dept_cd","res_cd"),"inner")
@@ -189,6 +207,7 @@ object cumulateGdsExponent {
     //    define spark session
     val sc = new SparkConf().setAppName("cumulateBrandExponent")
       .set("spark.sql.hive.metastorePartitionPruning", "false")
+      .set("spark.sql.auto.repartition","true")
     val spark = SparkSession.builder().config(sc).enableHiveSupport().getOrCreate()
     //    create temp table
     spark.sql("use sngmsvc")
@@ -208,18 +227,19 @@ object cumulateGdsExponent {
       .union(produceGivenDurationGdsExtremum(statis_date,-15,spark))
       .union(produceGivenDurationGdsExtremum(statis_date,-30,spark))
       .createOrReplaceTempView("dfGdsExtremumCumulate")
+
     spark.sql("insert overwrite table sngmsvc.t_mob_cumulate_gds_extremum partition(statis_date='"+statis_date+"') " +
       "select city_cd,str_cd,duration,pay_amnt_max,pay_amnt_min,pay_amnt_delta,etl_time from dfGdsExtremumCumulate")
 
 //    get and save exponent
-    val dfResult = produceCurrentDateGdsExponent(statis_date,-7,spark)
-      .union(produceCurrentDateGdsExponent(statis_date,-15,spark))
+    produceCurrentDateGdsExponent(statis_date,-15,spark)
       .union(produceCurrentDateGdsExponent(statis_date,-30,spark))
+      .union(produceCurrentDateGdsExponent(statis_date,-7,spark))
+        .createOrReplaceTempView("t_mob_cumulate_exponent_gds_view")
 
-    dfResult.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_cumulate_exponent_gds_d_tmp")
 
     spark.sql("insert overwrite table sngmsvc.t_mob_cumulate_exponent_gds_d partition(statis_date ='"+statis_date+"') " +
-      " select city_cd,city_nm,str_type,str_cd,str_nm,distance,cumulate_days,gds_cd,gds_nm,pay_expnt,etl_time from sngmsvc.t_mob_cumulate_exponent_gds_d_tmp")
+      " select city_cd,city_nm,str_type,str_cd,str_nm,distance,day,gds_cd,gds_nm,pay_expnt,etl_time from t_mob_cumulate_exponent_gds_view")
 
   }
 }
