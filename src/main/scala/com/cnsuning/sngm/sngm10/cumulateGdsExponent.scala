@@ -70,8 +70,8 @@ object cumulateGdsExponent {
       .groupBy("city_cd","str_type","str_cd")
       .agg(max("pay_amnt").as("pay_amnt_max"),min("pay_amnt").as("pay_amnt_min"))
 
-
-//    use window function to get summary pay amount of ${duration} days recently on every store's every Gds . then get the maximum and minimum.
+/*  abandoned step
+    use window function to get summary pay amount of ${duration} days recently on every store's every Gds . then get the maximum and minimum.
     val dfQuantile = spark.sql(" select city_cd,str_type,str_cd, " +
       "max(pay_amnt) pay_amnt_max,min(pay_amnt) pay_amnt_min " +
       "from ( " +
@@ -86,6 +86,7 @@ object cumulateGdsExponent {
                             "from dfPay1kmPerGds"+duration.abs.toString +
                     " ) t where statis_date >'"+DateUtils(statis_date,"yyyyMMdd",-30)+"' " +
       ") t group by city_cd,str_type,str_cd ")
+*/
     //  define etl_time
     val now = new Date()
     val dateFormat:SimpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")

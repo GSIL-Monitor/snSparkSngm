@@ -4,7 +4,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 
 /**
-  * name:dateUtil
+  * name:dateUtils
   * description: dateUtils has designed to simpled date process
   * running mode:
   * target:
