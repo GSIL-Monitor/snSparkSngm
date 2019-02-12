@@ -242,5 +242,6 @@ object cumulateGdsExponent {
     spark.sql("insert overwrite table sngmsvc.t_mob_cumulate_exponent_gds_d partition(statis_date ='"+statis_date+"') " +
       " select city_cd,city_nm,str_type,str_cd,str_nm,distance,day,gds_cd,gds_nm,pay_expnt,etl_time from t_mob_cumulate_exponent_gds_view")
 
+    spark.stop()
   }
 }
