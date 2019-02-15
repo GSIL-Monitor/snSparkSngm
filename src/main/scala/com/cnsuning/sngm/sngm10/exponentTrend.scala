@@ -172,11 +172,12 @@ object exponentTrend {
       .withColumn("pay_expnt",when(col("pay_expnt")>1,lit(9999)).otherwise(when(col("pay_expnt")<0.001,lit(10)).otherwise(col("pay_expnt")*10000)))
       .withColumn("pay_expnt_comp",when(col("pay_expnt_comp")>1,lit(9999)).otherwise(when(col("pay_expnt_comp")<0.001,lit(10)).otherwise(col("pay_expnt_comp")*10000)))
       .withColumn("statis_date",lit(statis_date))
+      .withColumn("statis_date_comp",lit(lstMon))
       .withColumn("etl_time",lit(etl_time))
 
     dfExponent.createOrReplaceTempView("dfExponent")
     spark.sql("insert overwrite table SNGMSVC.T_MOB_TREND_EXPONENT_D partition(statis_date='"+statis_date+"') " +
-      " select city_cd,city_nm,str_type,str_cd,str_nm,distance,pay_amnt,pay_expnt,pay_expnt_comp,etl_time from dfExponent")
+      " select city_cd,city_nm,str_type,str_cd,str_nm,distance,pay_amnt,pay_expnt,statis_date_comp,pay_expnt_comp,etl_time from dfExponent")
 //    dfExponent.write.mode("overwrite").saveAsTable("sngmsvc.T_MOB_TREND_EXPONENT_D")
     dfPay.unpersist()
     df5.unpersist()
