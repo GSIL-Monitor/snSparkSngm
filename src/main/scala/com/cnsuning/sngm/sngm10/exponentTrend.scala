@@ -176,7 +176,7 @@ object exponentTrend {
       .withColumn("etl_time",lit(etl_time))
 
     dfExponent.createOrReplaceTempView("dfExponent")
-    spark.sql("insert overwrite table SNGMSVC.T_MOB_TREND_EXPONENT_D partition(statis_date='"+statis_date+"') " +
+    spark.sql("insert overwrite table SNGMSVC.T_TRMNL_TREND_EXPONENT_D partition(statis_date='"+statis_date+"') " +
       " select city_cd,city_nm,str_type,str_cd,str_nm,distance,pay_amnt,pay_expnt,statis_date_comp,pay_expnt_comp,etl_time from dfExponent")
 //    dfExponent.write.mode("overwrite").saveAsTable("sngmsvc.T_MOB_TREND_EXPONENT_D")
     dfPay.unpersist()

@@ -240,7 +240,7 @@ object cumulateBrandExponent {
         .createOrReplaceTempView("t_mob_cumulate_exponent_view")
 //        .write.mode("overwrite").saveAsTable("sngmsvc.t_mob_cumulate_exponent_brand_d_tmp")
 //    save exponent
-    spark.sql("insert overwrite table sngmsvc.t_mob_cumulate_exponent_brand_d partition(statis_date='"+statis_date+"') " +
+    spark.sql("insert overwrite table sngmsvc.t_trmnl_cumulate_exponent_brand_d partition(statis_date='"+statis_date+"') " +
       "select city_cd,city_nm,str_type,str_cd,str_nm,distance,day,brand_cd,brand_nm,pay_expnt,pay_expnt_incrs,etl_time from t_mob_cumulate_exponent_view")
 //    df1.persist(StorageLevel.MEMORY_ONLY)
 //    df1.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_cumulate_brand_exponent_tmp")

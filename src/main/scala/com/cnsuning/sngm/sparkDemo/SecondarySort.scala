@@ -27,7 +27,7 @@ object SecondarySort {
 //    val pairRdd = rdd.map(x => (x.split("\t")(0),(x.split("\t")(1),x.split("\t")(2))))
     val pairRdd = rdd.map(_.split("\t")).map(x => (x(0),Tuple2(x(1).toInt,x(2).toInt)))
     val groups = pairRdd.groupByKey()
-    groups.foreach(println)
+    groups.lookup("x").foreach(println)
   }
 }
 

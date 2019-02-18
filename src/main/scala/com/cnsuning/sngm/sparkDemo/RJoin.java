@@ -2,7 +2,7 @@ package com.cnsuning.sngm.sparkDemo;
 
 import org.apache.commons.beanutils.BeanUtils;
 import org.apache.hadoop.io.*;
-import org.apache.hadoop.mapred.FileSplit;
+import org.apache.hadoop.mapreduce.lib.input.FileSplit;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.conf.Configuration;
@@ -94,8 +94,8 @@ public class RJoin {
         job.setOutputKeyClass(InfoBean.class);
         job.setOutputValueClass(NullWritable.class);
 
-        FileInputFormat.setInputPaths(job, new Path(args[0]));
-        FileOutputFormat.setOutputPath(job, new Path(args[1]));
+        FileInputFormat.setInputPaths(job, new Path("/user/sospdm/hive/warehouse/sospdm.db/test_mr"));
+        FileOutputFormat.setOutputPath(job, new Path("/user/sospdm/hive/warehouse/sospdm.db/test_mr/out/r.txt"));
 
         boolean res = job.waitForCompletion(true);
         System.exit(res ? 0 : 1);

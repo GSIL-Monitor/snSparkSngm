@@ -13,7 +13,7 @@ import org.apache.spark.streaming.{Seconds, StreamingContext}
 object StreamingStartDemo {
   def main(args: Array[String]): Unit = {
 
-    val conf = new SparkConf().setAppName("StreamingFirst").setMaster("local[2]")
+    val conf = new SparkConf().setAppName("StreamingFirst").setMaster("local[3]")
     val ssc = new StreamingContext(conf,Seconds(1))
     ssc.sparkContext.setLogLevel("WARN")
 

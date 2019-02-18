@@ -236,7 +236,7 @@ object cumulateExponent {
 
     dfResult.write.mode("overwrite").saveAsTable("sngmsvc.t_mob_cumulate_exponent_d_tmp")
 
-    spark.sql("insert overwrite table sngmsvc.t_mob_cumulate_exponent_d partition(statis_date='"+statis_date+"') " +
+    spark.sql("insert overwrite table sngmsvc.t_trmnl_cumulate_exponent_d partition(statis_date='"+statis_date+"') " +
       "select city_cd,city_nm,str_type,str_cd,str_nm,distance,day,pay_expnt,pay_amnt_incrs_rate,etl_time from sngmsvc.t_mob_cumulate_exponent_d_tmp ")
     spark.stop()
   }
